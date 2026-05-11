@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🛡️ Priority Manager
 
-## Getting Started
+**Priority Manager** is an AI-driven productivity platform designed to bridge the gap between high-level ambition and daily execution. It uses autonomous agents and behavioral analysis to help users focus on what truly matters.
 
-First, run the development server:
+## 🚀 Key Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **AI Priority Stack**: Autonomous daily planning that builds a structured execution stack.
+- **Goal Decomposition**: Automatically break down high-level goals into micro-tasks.
+- **AI Bodyguard**: A behavioral intelligence dashboard tracking commitment and focus.
+- **Recursive Progress**: Visual rollup of progress from tasks up to high-level goals.
+- **Real-Time Cockpit**: Integrated session tracking for tasks, breaks, and distractions.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠 Tech Stack
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **Framework**: [Next.js 15+](https://nextjs.org) (App Router)
+- **Database**: [Neon Postgres](https://neon.tech)
+- **ORM**: [Drizzle ORM](https://orm.drizzle.team)
+- **AI**: Google Gemini
+- **Styling**: Tailwind CSS + Lucide Icons
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🚦 Getting Started
 
-## Learn More
+1. **Clone & Install**:
+   ```bash
+   npm install
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+2. **Environment Setup**:
+   Copy `.env.example` to `.env.local` and fill in your Neon and AI credentials.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. **Database Migration**:
+   ```bash
+   npm run db:push
+   ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. **Run Dev Server**:
+   ```bash
+   npm run dev
+   ```
 
-## Deploy on Vercel
+Open [http://localhost:3000](http://localhost:3000) to start managing your priorities.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+*Detailed documentation can be found in [DOCUMENTATION.md](./DOCUMENTATION.md)*
