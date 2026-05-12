@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { generateDailyPlan } from "@/lib/planner/engine";
+import { revalidatePath } from "next/cache";
 
 export async function POST(req: NextRequest) {
     try {
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: result.error }, { status: 500 });
         }
 
+        revalidatePath("/");
         return NextResponse.json({ success: true, scheduledTasks: result.count });
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

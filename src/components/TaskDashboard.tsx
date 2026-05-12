@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useTransition, useRef } from "react";
 import { Task, DailyPlanItem, PlanTier } from "@/types";
-import { getTasks, deleteTaskAction, updateTaskStatus, startSession, stopSession, getSessionsForToday, startActivitySession, updatePlanItemStatus, commitTodaysPlan, reorderPlanItems, getTodaysPlan, removePlanItem, addPlanItem } from "@/app/actions";
+import { getTasks, deleteTaskAction, updateTaskStatus, startSession, stopSession, getSessionsForToday, startActivitySession, updatePlanItemStatus, commitTodaysPlan, reorderPlanItems, getTodaysPlan, removePlanItem, addPlanItem, getGoals } from "@/app/actions";
 import { DailyTimeline } from "./DailyTimeline";
 import TaskInspector from "@/app/goals/TaskInspector";
 import { CreateTaskModal } from "./CreateTaskModal";
 import { Sparkles, CheckCircle2, SkipForward, AlertTriangle, RefreshCcw, Loader2, Lock, Zap, Target, TrendingUp, Coffee, GripVertical, Plus, Play, Square, ChevronDown, ChevronUp, X } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -130,6 +131,14 @@ export default function TaskDashboard({
     const [tasks, setTasks] = useState<Task[]>(initialTasks);
     const [sessions, setSessions] = useState<any[]>(initialSessions || []);
     const [plan, setPlan] = useState<DailyPlanItem[]>(initialPlan || []);
+    const [goals, setGoals] = useState<any[]>(initialGoals || []);
+    const router = useRouter();
+
+    // Sync state with props when server-side data changes
+    useEffect(() => { setTasks(initialTasks); }, [initialTasks]);
+    useEffect(() => { setSessions(initialSessions); }, [initialSessions]);
+    useEffect(() => { setPlan(initialPlan); }, [initialPlan]);
+    useEffect(() => { setGoals(initialGoals); }, [initialGoals]);
     
     // Active session state
     const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
@@ -158,12 +167,20 @@ export default function TaskDashboard({
     }, []);
 
     const refreshData = async () => {
-        const updatedTasks = await getTasks();
-        const updatedSessions = await getSessionsForToday();
-        const freshPlan = await getTodaysPlan();
+        // Run all queries in parallel to significantly reduce latency
+        const [updatedTasks, updatedSessions, freshPlan, updatedGoals] = await Promise.all([
+            getTasks(),
+            getSessionsForToday(),
+            getTodaysPlan(),
+            getGoals()
+        ]);
+        
         setTasks(updatedTasks as Task[]);
         setSessions(updatedSessions as any[]);
         setPlan(freshPlan as any[]);
+        setGoals(updatedGoals as any[]);
+        
+        router.refresh();
     }
 
     // Timer Sync

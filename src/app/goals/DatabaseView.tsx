@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Task } from "@/types"
 import { columns } from "./columns"
 import { DataTable } from "@/components/ui/data-table"
@@ -8,8 +8,9 @@ import KanbanBoard from "./KanbanBoard"
 import GoalsRollup from "./GoalsRollup"
 import TaskInspector from "./TaskInspector"
 import { CreateTaskModal } from "@/components/CreateTaskModal"
-import { getTasks } from "@/app/actions"
+import { getTasks, getGoals } from "@/app/actions"
 import { LayoutList, KanbanSquare, Target, Search, FilterX, ChevronRight, Plus, Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
 
 export default function DatabaseView({ initialTasks, initialGoals }: { initialTasks: Task[], initialGoals: any[] }) {
     const [activeView, setActiveView] = useState<'table' | 'board' | 'goals'>('table')
@@ -20,10 +21,28 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
     const [inspectorTask, setInspectorTask] = useState<Task | null>(null)
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
     const [tasks, setTasks] = useState<Task[]>(initialTasks)
+    const [goals, setGoals] = useState<any[]>(initialGoals)
+    const router = useRouter()
+
+    // Sync state with props when server-side data changes
+    useEffect(() => {
+        setTasks(initialTasks)
+    }, [initialTasks])
+
+    useEffect(() => {
+        setGoals(initialGoals)
+    }, [initialGoals])
 
     const refreshData = async () => {
-        const updatedTasks = await getTasks();
+        // Run all queries in parallel to significantly reduce latency
+        const [updatedTasks, updatedGoals] = await Promise.all([
+            getTasks(),
+            getGoals()
+        ]);
+        
         setTasks(updatedTasks as Task[]);
+        setGoals(updatedGoals as any[]);
+        router.refresh();
     }
 
     // Hierarchical enrichment
