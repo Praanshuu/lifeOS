@@ -60,6 +60,9 @@ Never schedule a task (in any tier) with corrected estimatedMinutes > 2× \`beha
 **Rule B5 — Trigger-aware rationale**
 If \`behaviour.topSkipTriggers\` includes emotional blockers like 'avoidance', 'fear', or 'burnout', explicitly use the goal's \`logicalReason\` and \`emotionalReason\` in your rationale to proactively disarm these triggers.
 
+**Rule B6 — Time Slicing**
+If a task's corrected estimatedMinutes > 1.5× \`behaviour.typicalFocusWindowMinutes\`, you MUST 'slice' the task by providing an \`allocatedMinutes\` value. The \`allocatedMinutes\` should be approximately equal to the user's \`typicalFocusWindowMinutes\` or the remaining task time, whichever is smaller. This makes daunting tasks approachable.
+
 ## Hard Rules
 
 - NEVER schedule a completed task.

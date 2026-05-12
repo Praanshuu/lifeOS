@@ -288,6 +288,7 @@ export default function TaskDashboard({
                 ...newItem, 
                 taskTitle: taskObj?.title || "", 
                 estimatedMinutes: taskObj?.estimatedMinutes || 30,
+                allocatedMinutes: newItem.allocatedMinutes || null,
                 priority: taskObj?.priority || "medium",
                 spentMinutes: 0 
             } as any]);
@@ -514,6 +515,15 @@ export default function TaskDashboard({
                                                         <span className={`flex items-center gap-1 text-[10px] font-medium tracking-wide px-1.5 py-0.5 rounded-md border ${cfg.border} ${cfg.color} ${cfg.bg}`}>
                                                             {cfg.icon} {cfg.label}
                                                         </span>
+                                                        {item.allocatedMinutes ? (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-amber-500/20 bg-amber-500/5 text-amber-400 font-mono flex items-center gap-1">
+                                                                <TrendingUp className="w-3 h-3" /> {item.allocatedMinutes}m today (of {item.estimatedMinutes}m)
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-zinc-500/20 bg-zinc-500/5 text-zinc-400 font-mono">
+                                                                ~{item.estimatedMinutes}m
+                                                            </span>
+                                                        )}
                                                         {tasks.find(t => t.id === item.taskId)?.parentTaskTitle && (
                                                             <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-indigo-500/20 bg-indigo-500/5 text-indigo-400 font-mono truncate max-w-[120px]">
                                                                 ↳ {tasks.find(t => t.id === item.taskId)?.parentTaskTitle}
@@ -657,9 +667,14 @@ export default function TaskDashboard({
                                                 {task.parentTaskTitle && (
                                                     <p className="text-[10px] text-indigo-400/60 font-mono truncate">↳ {task.parentTaskTitle}</p>
                                                 )}
-                                                <span className="text-sm text-zinc-400 hover:text-zinc-200 truncate transition-colors block">
-                                                    {task.title}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm text-zinc-400 hover:text-zinc-200 truncate transition-colors">
+                                                        {task.title}
+                                                    </span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-zinc-500/20 bg-zinc-500/5 text-zinc-500 font-mono shrink-0">
+                                                        ~{task.estimatedMinutes || 30}m
+                                                    </span>
+                                                </div>
                                             </div>
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 {!isCommitted && plan.length > 0 && (

@@ -23,6 +23,10 @@ const SCHEDULE_TASK_TOOL = {
                     enum: ["minimum", "target", "stretch", "refresh"],
                     description: "The tier of this task in today's plan",
                 },
+                allocatedMinutes: {
+                    type: "number",
+                    description: "Optional. How many minutes are allocated for this task TODAY. Use this to 'slice' large tasks (e.g. allocate 60 mins for a 4-hour task)."
+                },
                 rationale: {
                     type: "string",
                     description: "One sentence explaining why this task was chosen",
@@ -184,6 +188,7 @@ export async function generateDailyPlan(userId: string, date: Date, userIntentio
                         taskId: args.taskId,
                         position: args.position,
                         tier: args.tier,
+                        allocatedMinutes: args.allocatedMinutes || null,
                         rationale: args.rationale,
                         status: "planned",
                     });

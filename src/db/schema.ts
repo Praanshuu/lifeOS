@@ -99,6 +99,7 @@ export const dailyPlans = pgTable("daily_plans", {
   status: text("status").notNull().default("planned"), // 'planned' | 'done' | 'skipped' | 'blocked'
   skipReason: text("skip_reason"),
   skipTrigger: text("skip_trigger"), // 'avoidance', 'burnout', 'distraction', 'energy', etc.
+  allocatedMinutes: integer("allocated_minutes"), // Optional time slice duration
   committedAt: timestamp("committed_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({

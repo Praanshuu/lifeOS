@@ -8,6 +8,7 @@ export interface DailyPlanItem {
     taskId: string;
     taskTitle: string;
     estimatedMinutes: number;
+    allocatedMinutes: number | null;
     spentMinutes: number;
     priority: string;
     position: number;

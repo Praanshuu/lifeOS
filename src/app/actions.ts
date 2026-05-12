@@ -308,6 +308,7 @@ export async function getTodaysPlan() {
             status: dailyPlans.status,
             skipReason: dailyPlans.skipReason,
             skipTrigger: dailyPlans.skipTrigger,
+            allocatedMinutes: dailyPlans.allocatedMinutes,
             committedAt: dailyPlans.committedAt,
             spentMinutes: sql<number>`COALESCE(SUM(EXTRACT(EPOCH FROM (${sessions.endTime} - ${sessions.startTime})) / 60), 0)`.mapWith(Number),
         })
@@ -330,12 +331,25 @@ export async function updatePlanItemStatus(id: string, status: string, skipReaso
     const updatedPlan = await db.update(dailyPlans).set(updates).where(and(eq(dailyPlans.id, id), eq(dailyPlans.userId, userId))).returning();
     
     // 2. Sync to the underlying task if completing, but only if it's NOT a recurring task
-    if (updatedPlan.length > 0 && (status === 'completed' || status === 'pending')) {
+    // and NOT a time slice (Option A: slices don't auto-complete the main task)
+    if (updatedPlan.length > 0 && (status === 'done' || status === 'planned')) {
         const planItem = updatedPlan[0];
-        const taskRow = await db.select({ type: tasks.type }).from(tasks).where(and(eq(tasks.id, planItem.taskId!), eq(tasks.userId, userId)));
+        const taskRows = await db.select({ 
+            type: tasks.type,
+            estimatedMinutes: tasks.estimatedMinutes 
+        }).from(tasks).where(and(eq(tasks.id, planItem.taskId!), eq(tasks.userId, userId)));
         
-        if (taskRow.length > 0 && taskRow[0].type !== 'recurring') {
-            await db.update(tasks).set({ status }).where(and(eq(tasks.id, planItem.taskId!), eq(tasks.userId, userId)));
+        if (taskRows.length > 0 && taskRows[0].type !== 'recurring') {
+            const isSlice = planItem.allocatedMinutes && planItem.allocatedMinutes < (taskRows[0].estimatedMinutes || 0);
+            
+            // Map 'done' (PlanStatus) to 'completed' (TaskStatus)
+            // Map 'planned' (PlanStatus) to 'pending' (TaskStatus)
+            const targetStatus = status === 'done' ? 'completed' : 'pending';
+            
+            // Only update task status if it's NOT a slice
+            if (!isSlice) {
+                await db.update(tasks).set({ status: targetStatus }).where(and(eq(tasks.id, planItem.taskId!), eq(tasks.userId, userId)));
+            }
         }
     }
     
@@ -375,7 +389,7 @@ export async function removePlanItem(id: string) {
     revalidatePath("/");
 }
 
-export async function addPlanItem(taskId: string, tier: string = "target") {
+export async function addPlanItem(taskId: string, tier: string = "target", allocatedMinutes?: number) {
     const userId = await getScopedUserId();
     const today = new Date().toISOString().split("T")[0];
     
@@ -390,6 +404,7 @@ export async function addPlanItem(taskId: string, tier: string = "target") {
         position: nextPosition,
         tier,
         status: "planned",
+        allocatedMinutes: allocatedMinutes || null,
     }).returning();
     
     revalidatePath("/");
