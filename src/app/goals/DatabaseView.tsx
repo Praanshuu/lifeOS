@@ -7,7 +7,9 @@ import { DataTable } from "@/components/ui/data-table"
 import KanbanBoard from "./KanbanBoard"
 import GoalsRollup from "./GoalsRollup"
 import TaskInspector from "./TaskInspector"
-import { LayoutList, KanbanSquare, Target, Search, FilterX, ChevronRight } from "lucide-react"
+import { CreateTaskModal } from "@/components/CreateTaskModal"
+import { getTasks } from "@/app/actions"
+import { LayoutList, KanbanSquare, Target, Search, FilterX, ChevronRight, Plus, Loader2 } from "lucide-react"
 
 export default function DatabaseView({ initialTasks, initialGoals }: { initialTasks: Task[], initialGoals: any[] }) {
     const [activeView, setActiveView] = useState<'table' | 'board' | 'goals'>('table')
@@ -16,13 +18,20 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
     const [goalFilter, setGoalFilter] = useState<string | 'all'>('all')
     const [statusFilter, setStatusFilter] = useState<string | 'all'>('all')
     const [inspectorTask, setInspectorTask] = useState<Task | null>(null)
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+    const [tasks, setTasks] = useState<Task[]>(initialTasks)
+
+    const refreshData = async () => {
+        const updatedTasks = await getTasks();
+        setTasks(updatedTasks as Task[]);
+    }
 
     // Hierarchical enrichment
     const enrichedTasks = useMemo(() => {
-        const taskMap = new Map(initialTasks.map(t => [t.id, { ...t }]));
+        const taskMap = new Map(tasks.map(t => [t.id, { ...t }]));
         const childrenMap = new Map<string, string[]>();
         
-        initialTasks.forEach(t => {
+        tasks.forEach(t => {
             if (t.parentTaskId) {
                 if (!childrenMap.has(t.parentTaskId)) childrenMap.set(t.parentTaskId, []);
                 childrenMap.get(t.parentTaskId)!.push(t.id);
@@ -83,6 +92,20 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
 
     return (
         <div className="flex flex-col gap-6 w-full">
+            {/* Header with Add Task */}
+            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight mb-2 text-zinc-100">Database</h1>
+                    <p className="text-zinc-500 text-sm">Manage tasks, goals, and execution metrics.</p>
+                </div>
+                <button 
+                    onClick={() => setIsCreateModalOpen(true)}
+                    className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-cyan-950 text-sm font-bold px-6 py-3 rounded-xl transition-all shadow-lg shadow-cyan-500/10"
+                >
+                    <Plus className="h-4 w-4 stroke-[3px]" /> Add Task
+                </button>
+            </header>
+
             {/* View Controller & Filter Engine */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
                 {/* View Toggles */}
@@ -152,6 +175,7 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
                         className="bg-zinc-950 border border-zinc-800 rounded-md px-3 py-1.5 text-sm text-zinc-300 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 appearance-none cursor-pointer"
                     >
                         <option value="all">All Priorities</option>
+                        <option value="critical">Critical</option>
                         <option value="high">High Priority</option>
                         <option value="medium">Medium Priority</option>
                         <option value="low">Low Priority</option>
@@ -173,6 +197,12 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
                     )}
                 </div>
             </div>
+
+            <CreateTaskModal 
+                isOpen={isCreateModalOpen}
+                onClose={() => { setIsCreateModalOpen(false); refreshData(); }} 
+                goals={initialGoals}
+            />
 
             <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {activeView === 'table' ? (
@@ -210,7 +240,7 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
                 ) : activeView === 'board' ? (
                     <KanbanBoard tasks={filteredTasks} onTaskClick={setInspectorTask} />
                 ) : (
-                    <GoalsRollup tasks={enrichedTasks} goals={initialGoals} />
+                    <GoalsRollup tasks={tasks} goals={initialGoals} />
                 )}
             </div>
 
@@ -221,8 +251,8 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
                     <TaskInspector 
                         task={inspectorTask} 
                         goals={initialGoals} 
-                        allTasks={enrichedTasks}
-                        onClose={() => setInspectorTask(null)} 
+                        allTasks={tasks}
+                        onClose={() => { setInspectorTask(null); refreshData(); }} 
                     />
                 </>
             )}
