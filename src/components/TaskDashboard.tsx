@@ -461,7 +461,7 @@ export default function TaskDashboard({
                         ) : (
                             <div className="flex flex-col gap-2">
                                 {/* Active Stack */}
-                                {stackPlan.filter(item => item.status === 'planned' || item.status === 'in-progress').map((item) => {
+                                {stackPlan.filter(item => item.status === 'planned').map((item) => {
                                     const cfg = TIER_CONFIG[item.tier as PlanTier];
                                     const isActive = activeTaskId === item.taskId;
                                     const canDrag = !isCommitted;
@@ -534,10 +534,10 @@ export default function TaskDashboard({
                                 })}
 
                                 {/* Inactive Section */}
-                                {stackPlan.some(item => item.status !== 'planned' && item.status !== 'in-progress') && (
+                                {stackPlan.some(item => item.status !== 'planned') && (
                                     <div className="mt-4 flex flex-col gap-2">
                                         <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-1">Finished Today</h3>
-                                        {stackPlan.filter(item => item.status !== 'planned' && item.status !== 'in-progress').map((item) => {
+                                        {stackPlan.filter(item => item.status !== 'planned').map((item) => {
                                             const isDone = item.status === "done";
                                             const isBlocked = item.status === "blocked";
                                             const isSkipped = item.status === "skipped";
