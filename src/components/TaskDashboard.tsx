@@ -460,15 +460,12 @@ export default function TaskDashboard({
                             </div>
                         ) : (
                             <div className="flex flex-col gap-2">
-                                {stackPlan.map((item) => {
+                                {/* Active Stack */}
+                                {stackPlan.filter(item => item.status === 'planned' || item.status === 'in-progress').map((item) => {
                                     const cfg = TIER_CONFIG[item.tier as PlanTier];
-                                    const isDone    = item.status === "done";
-                                    const isBlocked = item.status === "blocked";
-                                    const isSkipped = item.status === "skipped";
-                                    const inactive  = isDone || isBlocked || isSkipped;
-                                    const canDrag   = !isCommitted && !inactive;
-                                    const isDragTarget = dragOverId === item.id;
                                     const isActive = activeTaskId === item.taskId;
+                                    const canDrag = !isCommitted;
+                                    const isDragTarget = dragOverId === item.id;
 
                                     return (
                                         <div
@@ -480,14 +477,12 @@ export default function TaskDashboard({
                                             onDragEnd={handleDragEnd}
                                             className={[
                                                 "group flex items-stretch gap-3 bg-[#0a0a0b] border border-white/5 rounded-xl transition-all overflow-hidden",
-                                                inactive ? "opacity-40 grayscale-[0.5]" : "hover:border-white/10 hover:shadow-md hover:shadow-black/20",
+                                                "hover:border-white/10 hover:shadow-md hover:shadow-black/20",
                                                 isActive ? "border-indigo-500/30 ring-1 ring-indigo-500/20 shadow-indigo-500/5 shadow-lg" : "",
                                                 isDragTarget ? "border-indigo-500/50 scale-[1.01]" : ""
                                             ].join(" ")}
                                         >
-                                            {/* Drag handle & tier color bar */}
                                             <div className={`w-1.5 shrink-0 ${cfg.bg}`} />
-                                            
                                             <div className="flex flex-col items-center justify-center px-1 w-6">
                                                  {canDrag ? (
                                                     <GripVertical className="h-4 w-4 text-zinc-700 hover:text-zinc-500 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -507,18 +502,8 @@ export default function TaskDashboard({
                                                                 ↳ {tasks.find(t => t.id === item.taskId)?.parentTaskTitle}
                                                             </span>
                                                         )}
-                                                        {isBlocked && (
-                                                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md border border-rose-500/20 bg-rose-500/10 text-rose-400">
-                                                                Blocked: {item.skipReason}
-                                                            </span>
-                                                        )}
-                                                        {isSkipped && (
-                                                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md border border-zinc-500/20 bg-zinc-500/10 text-zinc-400">
-                                                                Skipped: {item.skipReason}
-                                                            </span>
-                                                        )}
                                                     </div>
-                                                    <h3 className={`text-sm font-medium leading-snug truncate ${isDone ? "line-through text-zinc-600" : "text-zinc-200"}`}>
+                                                    <h3 className="text-sm font-medium leading-snug truncate text-zinc-200">
                                                         {item.taskTitle}
                                                     </h3>
                                                     {item.rationale && (
@@ -526,32 +511,60 @@ export default function TaskDashboard({
                                                     )}
                                                 </div>
 
-                                                {/* Actions */}
                                                 <div className="flex items-center gap-2 shrink-0">
-                                                    {!inactive && (
-                                                        <>
-                                                            <div className="hidden sm:flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                {!isCommitted && (
-                                                                    <button onClick={() => handleRemoveFromPlan(item.id)} title="Remove from Plan" className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg"><X className="w-4 h-4" /></button>
-                                                                )}
-                                                                <button onClick={() => markStatus(item.id, "done")} title="Mark Done" className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg"><CheckCircle2 className="w-4 h-4" /></button>
-                                                                <button onClick={() => setReflectionPrompt({ id: item.id, type: 'blocked' })} title="Declare Blocker" className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg"><AlertTriangle className="w-4 h-4" /></button>
-                                                                <button onClick={() => setReflectionPrompt({ id: item.id, type: 'skipped' })} title="Skip" className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg"><SkipForward className="w-4 h-4" /></button>
-                                                            </div>
-                                                            <button 
-                                                                onClick={(e) => { e.stopPropagation(); toggleSession(item.taskId); }}
-                                                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${isActive ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20' : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20'}`}
-                                                            >
-                                                                {isActive ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                                                                {isActive ? "Stop" : "Start"}
-                                                            </button>
-                                                        </>
-                                                    )}
+                                                    <div className="hidden sm:flex items-center gap-1 mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        {!isCommitted && (
+                                                            <button onClick={() => handleRemoveFromPlan(item.id)} title="Remove from Plan" className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg"><X className="w-4 h-4" /></button>
+                                                        )}
+                                                        <button onClick={() => markStatus(item.id, "done")} title="Mark Done" className="p-1.5 text-zinc-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg"><CheckCircle2 className="w-4 h-4" /></button>
+                                                        <button onClick={() => setReflectionPrompt({ id: item.id, type: 'blocked' })} title="Declare Blocker" className="p-1.5 text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg"><AlertTriangle className="w-4 h-4" /></button>
+                                                        <button onClick={() => setReflectionPrompt({ id: item.id, type: 'skipped' })} title="Skip" className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg"><SkipForward className="w-4 h-4" /></button>
+                                                    </div>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); toggleSession(item.taskId); }}
+                                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${isActive ? 'bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20' : 'bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 border border-indigo-500/20'}`}
+                                                    >
+                                                        {isActive ? <Square className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                                                        {isActive ? "Stop" : "Start"}
+                                                    </button>
                                                 </div>
                                             </div>
                                         </div>
                                     );
                                 })}
+
+                                {/* Inactive Section */}
+                                {stackPlan.some(item => item.status !== 'planned' && item.status !== 'in-progress') && (
+                                    <div className="mt-4 flex flex-col gap-2">
+                                        <h3 className="text-[10px] font-bold text-zinc-600 uppercase tracking-widest px-1">Finished Today</h3>
+                                        {stackPlan.filter(item => item.status !== 'planned' && item.status !== 'in-progress').map((item) => {
+                                            const isDone = item.status === "done";
+                                            const isBlocked = item.status === "blocked";
+                                            const isSkipped = item.status === "skipped";
+                                            const cfg = TIER_CONFIG[item.tier as PlanTier];
+
+                                            return (
+                                                <div
+                                                    key={item.id}
+                                                    className="flex items-center gap-3 bg-zinc-900/10 border border-white/5 rounded-xl px-4 py-3 opacity-40 grayscale-[0.5]"
+                                                >
+                                                    <CheckCircle2 className={`h-4 w-4 shrink-0 ${isDone ? 'text-emerald-500' : isBlocked ? 'text-rose-500' : 'text-zinc-500'}`} />
+                                                    <div className="flex-1 min-w-0">
+                                                        <h3 className={`text-sm font-medium truncate ${isDone ? "line-through text-zinc-500" : "text-zinc-500"}`}>
+                                                            {item.taskTitle}
+                                                        </h3>
+                                                        <div className="flex items-center gap-2 mt-0.5">
+                                                            <span className="text-[10px] font-mono text-zinc-600 capitalize">{item.status}</span>
+                                                            {item.skipReason && (
+                                                                <span className="text-[10px] text-zinc-600 truncate italic"> — {item.skipReason}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
 
                                 {!isCommitted && plan.length > 0 && (
                                     <button

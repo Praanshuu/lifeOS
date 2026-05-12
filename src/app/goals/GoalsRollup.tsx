@@ -178,7 +178,20 @@ export default function GoalsRollup({ tasks, goals }: { tasks: Task[], goals: an
 
                 // RECURSIVE RENDERER FOR TASKS
                 const renderTask = (t: Task, depth: number = 0) => {
-                    const children = goalTasks.filter(child => child.parentTaskId === t.id);
+                    const children = goalTasks
+                        .filter(child => child.parentTaskId === t.id)
+                        .sort((a, b) => {
+                            const aDone = a.status === 'completed' || a.status === 'skipped';
+                            const bDone = b.status === 'completed' || b.status === 'skipped';
+                            if (aDone && !bDone) return 1;
+                            if (!aDone && bDone) return -1;
+                            
+                            if (!aDone) {
+                                const weights: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+                                return (weights[b.priority] || 0) - (weights[a.priority] || 0);
+                            }
+                            return 0;
+                        });
                     const isParent = children.length > 0;
                     const isExpanded = expandedParents[t.id] ?? true;
                     
@@ -237,8 +250,25 @@ export default function GoalsRollup({ tasks, goals }: { tasks: Task[], goals: an
                 };
 
                 // Top-level Workstreams: are parents AND don't have a parent themselves
-                const topLevelParents = goalTasks.filter(t => goalParentIds.has(t.id) && !t.parentTaskId);
-                const standaloneTasks = goalTasks.filter(t => !goalParentIds.has(t.id) && !t.parentTaskId);
+                const topLevelParents = goalTasks
+                    .filter(t => goalParentIds.has(t.id) && !t.parentTaskId)
+                    .sort((a, b) => {
+                        const aDone = a.status === 'completed' || a.status === 'skipped';
+                        const bDone = b.status === 'completed' || b.status === 'skipped';
+                        if (aDone && !bDone) return 1;
+                        if (!aDone && bDone) return -1;
+                        return 0;
+                    });
+                    
+                const standaloneTasks = goalTasks
+                    .filter(t => !goalParentIds.has(t.id) && !t.parentTaskId)
+                    .sort((a, b) => {
+                        const aDone = a.status === 'completed' || a.status === 'skipped';
+                        const bDone = b.status === 'completed' || b.status === 'skipped';
+                        if (aDone && !bDone) return 1;
+                        if (!aDone && bDone) return -1;
+                        return 0;
+                    });
 
                 return (
                     <div key={goal.id} className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden transition-all shadow-sm group">
@@ -295,18 +325,62 @@ export default function GoalsRollup({ tasks, goals }: { tasks: Task[], goals: an
                                     </div>
                                 ) : (
                                     <>
-                                        {/* Parent Workstreams */}
-                                        {topLevelParents.map(parent => renderTask(parent))}
+                                        {/* Separated Task Sections */}
+                                        <div className="flex flex-col gap-6">
+                                            {/* Active Section */}
+                                            {(topLevelParents.some(t => t.status !== 'completed' && t.status !== 'skipped') || standaloneTasks.some(t => t.status !== 'completed' && t.status !== 'skipped')) ? (
+                                                <div className="flex flex-col gap-4">
+                                                    {topLevelParents
+                                                        .filter(t => t.status !== 'completed' && t.status !== 'skipped')
+                                                        .map(parent => renderTask(parent))}
+                                                    
+                                                    {standaloneTasks.filter(t => t.status !== 'completed' && t.status !== 'skipped').length > 0 && (
+                                                        <div className="flex flex-col gap-2">
+                                                            {topLevelParents.some(t => t.status !== 'completed' && t.status !== 'skipped') && (
+                                                                <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-bold mb-1">Loose Tasks</p>
+                                                            )}
+                                                            <div className="bg-zinc-900/30 rounded-xl border border-zinc-800/50 overflow-hidden">
+                                                                {standaloneTasks
+                                                                    .filter(t => t.status !== 'completed' && t.status !== 'skipped')
+                                                                    .map(task => renderTask(task))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <div className="text-center py-6 px-4 bg-emerald-500/5 border border-dashed border-emerald-500/20 rounded-xl">
+                                                    <CheckCircle2 className="w-6 h-6 text-emerald-500/40 mx-auto mb-2" />
+                                                    <p className="text-xs text-emerald-500/60 font-medium italic">No active tasks. Goal on track.</p>
+                                                </div>
+                                            )}
 
-                                        {/* Standalone Tasks */}
-                                        {standaloneTasks.length > 0 && (
-                                            <div>
-                                                {topLevelParents.length > 0 && (
-                                                    <p className="text-[10px] text-zinc-600 uppercase tracking-widest font-semibold mb-2 mt-4">Standalone Tasks</p>
-                                                )}
-                                                <DataTable columns={columns} data={standaloneTasks} />
-                                            </div>
-                                        )}
+                                            {/* Completed Section */}
+                                            {(topLevelParents.some(t => t.status === 'completed' || t.status === 'skipped') || standaloneTasks.some(t => t.status === 'completed' || t.status === 'skipped')) && (
+                                                <div className="pt-4 border-t border-zinc-800/50">
+                                                    <details className="group/completed">
+                                                        <summary className="flex items-center gap-2 cursor-pointer list-none text-[10px] font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors">
+                                                            <ChevronRight className="w-3 h-3 group-open/completed:rotate-90 transition-transform" />
+                                                            Completed Items ({
+                                                                goalTasks.filter(t => t.status === 'completed' || t.status === 'skipped').length
+                                                            })
+                                                        </summary>
+                                                        <div className="flex flex-col gap-2 mt-4 opacity-60 grayscale-[0.3]">
+                                                            {topLevelParents
+                                                                .filter(t => t.status === 'completed' || t.status === 'skipped')
+                                                                .map(parent => renderTask(parent))}
+                                                            
+                                                            {standaloneTasks.filter(t => t.status === 'completed' || t.status === 'skipped').length > 0 && (
+                                                                <div className="flex flex-col gap-1">
+                                                                    {standaloneTasks
+                                                                        .filter(t => t.status === 'completed' || t.status === 'skipped')
+                                                                        .map(task => renderTask(task))}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </details>
+                                                </div>
+                                            )}
+                                        </div>
                                     </>
                                 )}
                             </div>

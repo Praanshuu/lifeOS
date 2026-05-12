@@ -7,7 +7,7 @@ import { DataTable } from "@/components/ui/data-table"
 import KanbanBoard from "./KanbanBoard"
 import GoalsRollup from "./GoalsRollup"
 import TaskInspector from "./TaskInspector"
-import { LayoutList, KanbanSquare, Target, Search, FilterX } from "lucide-react"
+import { LayoutList, KanbanSquare, Target, Search, FilterX, ChevronRight } from "lucide-react"
 
 export default function DatabaseView({ initialTasks, initialGoals }: { initialTasks: Task[], initialGoals: any[] }) {
     const [activeView, setActiveView] = useState<'table' | 'board' | 'goals'>('table')
@@ -66,6 +66,19 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
         const matchesGoal = goalFilter === 'all' ? true : task.goalId === goalFilter;
         const matchesStatus = statusFilter === 'all' ? true : task.status === statusFilter;
         return matchesSearch && matchesPriority && matchesGoal && matchesStatus;
+    }).sort((a, b) => {
+        // Move completed/skipped to bottom
+        const aDone = a.status === 'completed' || a.status === 'skipped';
+        const bDone = b.status === 'completed' || b.status === 'skipped';
+        if (aDone && !bDone) return 1;
+        if (!aDone && bDone) return -1;
+        
+        // If both are active, sort by priority
+        if (!aDone) {
+            const weights: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+            return (weights[b.priority] || 0) - (weights[a.priority] || 0);
+        }
+        return 0;
     });
 
     return (
@@ -163,7 +176,37 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
 
             <div className="w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {activeView === 'table' ? (
-                    <DataTable columns={columns} data={filteredTasks} onRowClick={setInspectorTask} />
+                    <div className="flex flex-col gap-8">
+                        <div className="flex flex-col gap-3">
+                            <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest px-1 flex items-center gap-2">
+                                <LayoutList className="w-3 h-3" />
+                                Active Inventory ({filteredTasks.filter(t => t.status !== 'completed' && t.status !== 'skipped').length})
+                            </h3>
+                            <DataTable 
+                                columns={columns} 
+                                data={filteredTasks.filter(t => t.status !== 'completed' && t.status !== 'skipped')} 
+                                onRowClick={setInspectorTask} 
+                            />
+                        </div>
+
+                        {filteredTasks.some(t => t.status === 'completed' || t.status === 'skipped') && (
+                            <div className="pt-6 border-t border-zinc-900">
+                                <details className="group/archive">
+                                    <summary className="flex items-center gap-2 cursor-pointer list-none text-xs font-bold text-zinc-600 uppercase tracking-widest hover:text-zinc-400 transition-colors px-1">
+                                        <ChevronRight className="w-4 h-4 group-open/archive:rotate-90 transition-transform" />
+                                        Task Archive ({filteredTasks.filter(t => t.status === 'completed' || t.status === 'skipped').length})
+                                    </summary>
+                                    <div className="mt-4 opacity-50 grayscale-[0.5] hover:opacity-100 hover:grayscale-0 transition-all duration-500">
+                                        <DataTable 
+                                            columns={columns} 
+                                            data={filteredTasks.filter(t => t.status === 'completed' || t.status === 'skipped')} 
+                                            onRowClick={setInspectorTask} 
+                                        />
+                                    </div>
+                                </details>
+                            </div>
+                        )}
+                    </div>
                 ) : activeView === 'board' ? (
                     <KanbanBoard tasks={filteredTasks} onTaskClick={setInspectorTask} />
                 ) : (
