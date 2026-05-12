@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { assembleContext, type ContextModule } from "@/lib/context";
 import { AGENT_TOOLS, type ToolName } from "@/lib/agent/tools";
 import { executeTool } from "@/lib/agent/executor";
@@ -112,7 +113,7 @@ async function callGroq(model: string, messages: object[], tools: object[]) {
 // Text-based tool call extractor (fallback for models
 // that write JSON instead of structured function calls)
 // ──────────────────────────────────────────────
-async function extractAndExecuteTextToolCalls(text: string): Promise<{
+async function extractAndExecuteTextToolCalls(userId: string, text: string): Promise<{
     cleanText: string;
     actionsExecuted: string[];
 }> {
@@ -135,7 +136,7 @@ async function extractAndExecuteTextToolCalls(text: string): Promise<{
     }
 
     for (const tc of toExecute) {
-        const result = await executeTool(tc.name as ToolName, tc.args);
+        const result = await executeTool(userId, tc.name as ToolName, tc.args);
         if (result.success) {
             actionsExecuted.push(`✓ ${result.message}`);
         }
@@ -216,6 +217,11 @@ function trimContext(ctx: Record<string, unknown>): Record<string, unknown> {
 // ──────────────────────────────────────────────
 export async function POST(req: NextRequest) {
     try {
+        const { userId } = await auth();
+        if (!userId) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
         const body = await req.json();
         const {
             mode = "chat",
@@ -258,7 +264,7 @@ export async function POST(req: NextRequest) {
         const config = MODE_CONFIG[mode];
 
         // ── Build context ──
-        const rawContext = await assembleContext(config.modules, config.days);
+        const rawContext = await assembleContext(userId, config.modules, config.days);
         const context = trimContext(rawContext);
 
         const userMessage = message || "Generate the report.";
@@ -345,7 +351,7 @@ export async function POST(req: NextRequest) {
                     const toolArgs = typeof tc.function.arguments === "string"
                         ? JSON.parse(tc.function.arguments)
                         : tc.function.arguments;
-                    const result = await executeTool(toolName, toolArgs);
+                    const result = await executeTool(userId, toolName, toolArgs);
 
                     toolHistory.push({
                         role: "tool",
@@ -371,7 +377,7 @@ export async function POST(req: NextRequest) {
         // Scan final text for any inline JSON tool calls
         let actionsExecuted: string[] = [];
         if (finalText) {
-            const extracted = await extractAndExecuteTextToolCalls(finalText);
+            const extracted = await extractAndExecuteTextToolCalls(userId, finalText);
             finalText = extracted.cleanText;
             actionsExecuted = extracted.actionsExecuted;
         }

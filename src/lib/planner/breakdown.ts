@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
@@ -31,18 +31,32 @@ const GENERATE_SUBTASKS_TOOL = {
     }
 };
 
-export async function generateTaskBreakdown(parentTaskId: string, parentTitle: string, goalId: string | null, dueDate: string | null, guidance: string) {
+export async function generateTaskBreakdown(userId: string, parentTaskId: string, parentTitle: string, goalId: string | null, dueDate: string | null, guidance: string) {
     const today = new Date().toISOString().split("T")[0];
+
+    const parentRows = await db
+        .select({
+            title: tasks.title,
+            goalId: tasks.goalId,
+            dueDate: tasks.dueDate,
+        })
+        .from(tasks)
+        .where(and(eq(tasks.id, parentTaskId), eq(tasks.userId, userId)))
+        .limit(1);
+    if (parentRows.length === 0) {
+        throw new Error("Parent task not found.");
+    }
+    const parentTask = parentRows[0];
     
     // ─── Deduplication Guard ─────────────────────────────────────────────────────
     // Delete any existing micro-tasks that were previously generated for this parent.
     // This mirrors the daily planner's regenerate pattern — always start fresh.
-    await db.delete(tasks).where(eq(tasks.parentTaskId, parentTaskId));
+    await db.delete(tasks).where(and(eq(tasks.parentTaskId, parentTaskId), eq(tasks.userId, userId)));
     
     const context = {
         today,
-        parentTitle,
-        dueDate: dueDate || "No strict deadline",
+        parentTitle: parentTask.title || parentTitle,
+        dueDate: (parentTask.dueDate ? new Date(parentTask.dueDate).toISOString().split("T")[0] : dueDate) || "No strict deadline",
         userGuidance: guidance
     };
 
@@ -88,9 +102,10 @@ Call the generate_micro_tasks tool exactly once with the array of subtasks.`;
     if (subtasks.length > 0) {
         await db.insert(tasks).values(
             subtasks.map((st: any) => ({
+                userId,
                 title: st.title,
                 parentTaskId: parentTaskId,
-                goalId: goalId || null,
+                goalId: parentTask.goalId || goalId || null,
                 estimatedMinutes: st.estimatedMinutes || 30,
                 scheduledDate: new Date(st.scheduledDate),
                 dueDate: new Date(st.scheduledDate),

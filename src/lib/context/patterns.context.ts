@@ -2,7 +2,7 @@ import { db } from "@/db";
 import { sessions, tasks } from "@/db/schema";
 import { gte, eq, isNotNull, and } from "drizzle-orm";
 
-export async function buildPatternsContext(days = 14) {
+export async function buildPatternsContext(userId: string, days = 14) {
     const since = new Date();
     since.setDate(since.getDate() - days);
     since.setHours(0, 0, 0, 0);
@@ -16,7 +16,7 @@ export async function buildPatternsContext(days = 14) {
         })
         .from(sessions)
         .leftJoin(tasks, eq(sessions.taskId, tasks.id))
-        .where(and(gte(sessions.startTime, since), isNotNull(sessions.endTime)));
+        .where(and(eq(sessions.userId, userId), gte(sessions.startTime, since), isNotNull(sessions.endTime)));
 
     if (rawSessions.length === 0) {
         return {
@@ -62,6 +62,7 @@ export async function buildPatternsContext(days = 14) {
         .select({ id: tasks.id })
         .from(tasks)
         .where(and(
+            eq(tasks.userId, userId),
             isNotNull(tasks.scheduledDate),
             gte(tasks.scheduledDate!, since)
         ));

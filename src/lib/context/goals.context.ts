@@ -1,8 +1,8 @@
 import { db } from "@/db";
 import { goals, tasks, sessions } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
-export async function buildGoalsContext() {
+export async function buildGoalsContext(userId: string) {
     const allGoals = await db
         .select({
             id: goals.id,
@@ -17,8 +17,9 @@ export async function buildGoalsContext() {
             minutesLogged: sql<number>`COALESCE(SUM(EXTRACT(EPOCH FROM (${sessions.endTime} - ${sessions.startTime})) / 60), 0)`.mapWith(Number),
         })
         .from(goals)
-        .leftJoin(tasks, eq(tasks.goalId, goals.id))
-        .leftJoin(sessions, eq(sessions.taskId, tasks.id))
+        .leftJoin(tasks, and(eq(tasks.goalId, goals.id), eq(tasks.userId, userId)))
+        .leftJoin(sessions, and(eq(sessions.taskId, tasks.id), eq(sessions.userId, userId)))
+        .where(eq(goals.userId, userId))
         .groupBy(goals.id);
 
     return allGoals.map(g => ({

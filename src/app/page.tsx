@@ -2,8 +2,14 @@ import TaskDashboard from "@/components/TaskDashboard";
 import { AiBanner } from "@/components/AiBanner";
 import { getTasks, getSessionsForToday, getGoals, getTodaysPlan } from "./actions";
 import { computeNudges } from "@/lib/nudges";
+import { auth } from "@clerk/nextjs/server";
 
 export default async function Home() {
+  const { userId } = await auth();
+  if (!userId) {
+    return <div className="text-zinc-300">Sign in to load your dashboard.</div>;
+  }
+
   const tasks = await getTasks();
   const sessions = await getSessionsForToday();
   const goals = await getGoals();

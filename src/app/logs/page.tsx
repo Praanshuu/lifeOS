@@ -1,7 +1,13 @@
 import { getAllSessions } from "@/app/actions";
 import { LogsTable } from "./LogsTable";
+import { auth } from "@clerk/nextjs/server";
 
 export default async function LogsPage() {
+    const { userId } = await auth();
+    if (!userId) {
+        return <div className="text-zinc-300">Sign in to view activity logs.</div>;
+    }
+
     const rawSessions = await getAllSessions();
 
     // Map database session rows to a cleaner format for the table

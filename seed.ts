@@ -9,12 +9,16 @@ const sql = neon(process.env.DATABASE_URL!);
 const db = drizzle(sql);
 
 async function seed() {
+    const userId = process.env.SEED_CLERK_USER_ID;
+    if (!userId) {
+        throw new Error("Set SEED_CLERK_USER_ID in .env.local to seed user-specific activities.");
+    }
     console.log("Seeding default activities...");
     
     await db.insert(activities).values([
-        { name: "Break", type: "break", isSystem: true },
-        { name: "Distraction", type: "distraction", isSystem: true },
-        { name: "Lunch", type: "break", isSystem: true },
+        { userId, name: "Break", type: "break", isSystem: true },
+        { userId, name: "Distraction", type: "distraction", isSystem: true },
+        { userId, name: "Lunch", type: "break", isSystem: true },
     ]);
     
     console.log("Seeding complete!");

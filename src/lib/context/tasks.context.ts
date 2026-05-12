@@ -1,8 +1,8 @@
 import { db } from "@/db";
 import { tasks, sessions, goals } from "@/db/schema";
-import { eq, sql, isNotNull } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
-export async function buildTasksContext() {
+export async function buildTasksContext(userId: string) {
     const allTasks = await db
         .select({
             id: tasks.id,
@@ -23,6 +23,7 @@ export async function buildTasksContext() {
         .from(tasks)
         .leftJoin(sessions, eq(tasks.id, sessions.taskId))
         .leftJoin(goals, eq(tasks.goalId, goals.id))
+        .where(eq(tasks.userId, userId))
         .groupBy(tasks.id, goals.title);
 
     const now = new Date();

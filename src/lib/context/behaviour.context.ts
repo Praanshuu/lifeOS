@@ -62,7 +62,7 @@ function skipRate(items: { status: string }[]): number {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-export async function buildBehaviourContext(days = 30): Promise<BehaviourContext> {
+export async function buildBehaviourContext(userId: string, days = 30): Promise<BehaviourContext> {
     const since = new Date();
     since.setDate(since.getDate() - days);
     since.setHours(0, 0, 0, 0);
@@ -89,7 +89,7 @@ export async function buildBehaviourContext(days = 30): Promise<BehaviourContext
         .from(dailyPlans)
         .leftJoin(tasks, eq(dailyPlans.taskId, tasks.id))
         .leftJoin(sessions, eq(sessions.taskId, tasks.id))
-        .where(gte(dailyPlans.date, sinceStr))
+        .where(and(eq(dailyPlans.userId, userId), gte(dailyPlans.date, sinceStr)))
         .groupBy(
             dailyPlans.id,
             dailyPlans.date,
@@ -108,7 +108,7 @@ export async function buildBehaviourContext(days = 30): Promise<BehaviourContext
             endTime: sessions.endTime,
         })
         .from(sessions)
-        .where(and(gte(sessions.startTime, since), isNotNull(sessions.endTime)));
+        .where(and(eq(sessions.userId, userId), gte(sessions.startTime, since), isNotNull(sessions.endTime)));
 
     const sampleDays = new Set(planItems.map(p => p.date)).size;
 

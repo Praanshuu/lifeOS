@@ -32,22 +32,22 @@ const SCHEDULE_TASK_TOOL = {
     },
 };
 
-export async function generateDailyPlan(date: Date, userIntention?: string): Promise<{ success: boolean; count: number; error?: string }> {
+export async function generateDailyPlan(userId: string, date: Date, userIntention?: string): Promise<{ success: boolean; count: number; error?: string }> {
     const dateStr = date.toISOString().split("T")[0];
 
     // 1. Check if plan already exists for this date
     const existing = await db
         .select({ id: dailyPlans.id })
         .from(dailyPlans)
-        .where(eq(dailyPlans.date, dateStr));
+        .where(and(eq(dailyPlans.date, dateStr), eq(dailyPlans.userId, userId)));
 
     if (existing.length > 0) {
         // Delete existing plan to regenerate
-        await db.delete(dailyPlans).where(eq(dailyPlans.date, dateStr));
+        await db.delete(dailyPlans).where(and(eq(dailyPlans.date, dateStr), eq(dailyPlans.userId, userId)));
     }
 
     // 2. Assemble full context (behaviour uses a 30-day window for reliability)
-    const rawContext = await assembleContext(["goals", "tasks", "sessions", "patterns", "behaviour"], 14);
+    const rawContext = await assembleContext(userId, ["goals", "tasks", "sessions", "patterns", "behaviour"], 14);
 
     // 3. Extract typed slices
     const tasks_ctx    = rawContext.tasks     as any;
@@ -164,7 +164,22 @@ export async function generateDailyPlan(date: Date, userIntention?: string): Pro
                 }
 
                 try {
+                    const taskRows = await db
+                        .select({ id: tasks.id })
+                        .from(tasks)
+                        .where(and(eq(tasks.id, args.taskId), eq(tasks.userId, userId)))
+                        .limit(1);
+                    if (taskRows.length === 0) {
+                        toolResults.push({
+                            tool_call_id: tc.id,
+                            role: "tool",
+                            content: JSON.stringify({ success: false, reason: "task_not_found", message: "Task not found for this user." }),
+                        });
+                        continue;
+                    }
+
                     await db.insert(dailyPlans).values({
+                        userId,
                         date: dateStr,
                         taskId: args.taskId,
                         position: args.position,

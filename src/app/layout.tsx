@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ClerkProvider, Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
 
@@ -29,12 +30,23 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-zinc-950 text-zinc-50">
-        <Sidebar />
-        <main className="min-h-screen md:pl-64 pt-16 md:pt-0">
-          <div className="max-w-6xl mx-auto w-full p-6 md:p-12 lg:p-24">
-            {children}
-          </div>
-        </main>
+        <ClerkProvider>
+          <header className="fixed right-4 top-4 z-[60] flex items-center gap-2">
+            <Show when="signed-out">
+              <SignInButton />
+              <SignUpButton />
+            </Show>
+            <Show when="signed-in">
+              <UserButton />
+            </Show>
+          </header>
+          <Sidebar />
+          <main className="min-h-screen md:pl-64 pt-16 md:pt-0">
+            <div className="max-w-6xl mx-auto w-full p-6 md:p-12 lg:p-24">
+              {children}
+            </div>
+          </main>
+        </ClerkProvider>
       </body>
     </html>
   );

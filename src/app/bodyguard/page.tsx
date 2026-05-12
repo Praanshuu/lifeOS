@@ -1,6 +1,7 @@
 import { assembleContext } from "@/lib/context";
 import BodyguardClient from "./BodyguardClient";
 import { Shield } from "lucide-react";
+import { auth } from "@clerk/nextjs/server";
 
 export const metadata = {
     title: "AI Bodyguard — LifeOS",
@@ -8,7 +9,12 @@ export const metadata = {
 };
 
 export default async function BodyguardPage() {
-    const context = await assembleContext(["goals", "tasks", "patterns"], 14);
+    const { userId } = await auth();
+    if (!userId) {
+        return <div className="text-zinc-300">Sign in to use AI Bodyguard.</div>;
+    }
+
+    const context = await assembleContext(userId, ["goals", "tasks", "patterns"], 14);
     
     const patterns = context.patterns as any;
     const tasks = context.tasks as any;

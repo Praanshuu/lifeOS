@@ -2,7 +2,7 @@ import { db } from "@/db";
 import { sessions, tasks } from "@/db/schema";
 import { gte, sql, eq, and, isNotNull } from "drizzle-orm";
 
-export async function buildSessionsContext(days = 14) {
+export async function buildSessionsContext(userId: string, days = 14) {
     const since = new Date();
     since.setDate(since.getDate() - days);
     since.setHours(0, 0, 0, 0);
@@ -19,7 +19,7 @@ export async function buildSessionsContext(days = 14) {
         })
         .from(sessions)
         .leftJoin(tasks, eq(sessions.taskId, tasks.id))
-        .where(and(gte(sessions.startTime, since), isNotNull(sessions.endTime)))
+        .where(and(eq(sessions.userId, userId), gte(sessions.startTime, since), isNotNull(sessions.endTime)))
         .orderBy(sessions.startTime);
 
     // Group by day

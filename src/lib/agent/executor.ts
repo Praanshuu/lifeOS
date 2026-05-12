@@ -1,7 +1,8 @@
 import { db } from "@/db";
 import { tasks, goals, activities, sessions } from "@/db/schema";
-import { eq, ilike } from "drizzle-orm";
+import { and, eq, ilike } from "drizzle-orm";
 import type { ToolName } from "./tools";
+import { ensureUserSetup } from "@/lib/auth";
 
 export interface ToolResult {
     success: boolean;
@@ -11,11 +12,13 @@ export interface ToolResult {
 
 export const systemSuggestions: Array<{ suggestion: string; rationale: string; timestamp: string }> = [];
 
-export async function executeTool(name: ToolName, args: Record<string, unknown>): Promise<ToolResult> {
+export async function executeTool(userId: string, name: ToolName, args: Record<string, unknown>): Promise<ToolResult> {
     try {
+        await ensureUserSetup(userId);
         switch (name) {
             case "create_task": {
                 const newTask = await db.insert(tasks).values({
+                    userId,
                     title: args.title as string,
                     priority: (args.priority as string) || "medium",
                     estimatedMinutes: (args.estimatedMinutes as number) || 30,
@@ -38,7 +41,7 @@ export async function executeTool(name: ToolName, args: Record<string, unknown>)
                 // Find the activity by type
                 const existingActivities = await db.select()
                     .from(activities)
-                    .where(eq(activities.type, activityType))
+                    .where(and(eq(activities.type, activityType), eq(activities.userId, userId)))
                     .limit(1);
                 
                 if (existingActivities.length === 0) {
@@ -51,6 +54,7 @@ export async function executeTool(name: ToolName, args: Record<string, unknown>)
                 const activity = existingActivities[0];
 
                 const newSession = await db.insert(sessions).values({
+                    userId,
                     type: activityType,
                     activityId: activity.id,
                     startTime: new Date(),
@@ -66,7 +70,7 @@ export async function executeTool(name: ToolName, args: Record<string, unknown>)
             case "update_task": {
                 // Verify task exists before updating
                 const existing = await db.select({ id: tasks.id, title: tasks.title })
-                    .from(tasks).where(eq(tasks.id, args.id as string));
+                    .from(tasks).where(and(eq(tasks.id, args.id as string), eq(tasks.userId, userId)));
 
                 if (existing.length === 0) {
                     return { success: false, message: `No task found with id "${args.id}". Cannot update.` };
@@ -83,20 +87,20 @@ export async function executeTool(name: ToolName, args: Record<string, unknown>)
                     return { success: false, message: "No valid fields to update were provided." };
                 }
 
-                await db.update(tasks).set(updates).where(eq(tasks.id, args.id as string));
+                await db.update(tasks).set(updates).where(and(eq(tasks.id, args.id as string), eq(tasks.userId, userId)));
                 return { success: true, message: `Task "${existing[0].title}" updated successfully.` };
             }
 
             case "delete_task": {
                 // SAFETY: verify the task exists by ID first
                 const existing = await db.select({ id: tasks.id, title: tasks.title })
-                    .from(tasks).where(eq(tasks.id, args.id as string));
+                    .from(tasks).where(and(eq(tasks.id, args.id as string), eq(tasks.userId, userId)));
 
                 if (existing.length === 0) {
                     // If ID-based lookup fails, check if maybe a title was passed instead
                     if (args.title) {
                         const byTitle = await db.select({ id: tasks.id, title: tasks.title })
-                            .from(tasks).where(ilike(tasks.title, `%${args.title as string}%`));
+                            .from(tasks).where(and(ilike(tasks.title, `%${args.title as string}%`), eq(tasks.userId, userId)));
 
                         if (byTitle.length === 0) {
                             return {
@@ -112,7 +116,7 @@ export async function executeTool(name: ToolName, args: Record<string, unknown>)
                             };
                         }
                         // Exactly one match — safe to delete
-                        await db.delete(tasks).where(eq(tasks.id, byTitle[0].id));
+                        await db.delete(tasks).where(and(eq(tasks.id, byTitle[0].id), eq(tasks.userId, userId)));
                         return { success: true, message: `Task "${byTitle[0].title}" deleted.` };
                     }
 
@@ -122,12 +126,13 @@ export async function executeTool(name: ToolName, args: Record<string, unknown>)
                     };
                 }
 
-                await db.delete(tasks).where(eq(tasks.id, existing[0].id));
+                await db.delete(tasks).where(and(eq(tasks.id, existing[0].id), eq(tasks.userId, userId)));
                 return { success: true, message: `Task "${existing[0].title}" deleted.` };
             }
 
             case "create_goal": {
                 const newGoal = await db.insert(goals).values({
+                    userId,
                     title: args.title as string,
                     deadline: args.deadline ? new Date(args.deadline as string) : null,
                     status: "active",
