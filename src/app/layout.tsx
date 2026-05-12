@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider, Show, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import "./globals.css";
 import { Sidebar } from "@/components/Sidebar";
+import { Button } from "@/components/ui/button";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,13 +32,27 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-zinc-950 text-zinc-50">
         <ClerkProvider>
-          <header className="fixed right-4 top-4 z-[60] flex items-center gap-2">
+          <header className="fixed right-6 top-6 z-[60] flex items-center gap-3">
             <Show when="signed-out">
-              <SignInButton />
-              <SignUpButton />
+              <SignInButton mode="modal">
+                <Button variant="ghost" className="text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/50 transition-all rounded-full px-5">
+                  Sign in
+                </Button>
+              </SignInButton>
+              <SignUpButton mode="modal">
+                <Button className="bg-white text-zinc-950 hover:bg-zinc-200 font-semibold shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-all rounded-full px-6">
+                  Get Started
+                </Button>
+              </SignUpButton>
             </Show>
             <Show when="signed-in">
-              <UserButton />
+              <UserButton 
+                appearance={{
+                  elements: {
+                    userButtonAvatarBox: "size-9 border border-zinc-800",
+                  }
+                }} 
+              />
             </Show>
           </header>
           <Sidebar />
