@@ -95,7 +95,7 @@ export async function generateDailyPlan(userId: string, date: Date, userIntentio
             topBlockerReasons:       behaviour_ctx?.topBlockerReasons       ?? [],
             topSkipTriggers:         behaviour_ctx?.topSkipTriggers         ?? [],
             skipRateByPriority:      behaviour_ctx?.skipRateByPriority      ?? { critical: 0, high: 0, medium: 0, low: 0 },
-            typicalFocusWindowMinutes: behaviour_ctx?.typicalFocusWindowMinutes ?? 0,
+            typicalFocusWindowMinutes: (behaviour_ctx?.typicalFocusWindowMinutes && behaviour_ctx.typicalFocusWindowMinutes > 0) ? behaviour_ctx.typicalFocusWindowMinutes : 45,
             sampleDays:              behaviour_ctx?.sampleDays              ?? 0,
         },
         userIntention: userIntention || "No specific intention provided. Optimize for deadlines, priorities, and historical capacity.",

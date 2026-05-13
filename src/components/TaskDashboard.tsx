@@ -515,7 +515,7 @@ export default function TaskDashboard({
                                                         <span className={`flex items-center gap-1 text-[10px] font-medium tracking-wide px-1.5 py-0.5 rounded-md border ${cfg.border} ${cfg.color} ${cfg.bg}`}>
                                                             {cfg.icon} {cfg.label}
                                                         </span>
-                                                        {item.allocatedMinutes ? (
+                                                        {item.allocatedMinutes !== null && item.allocatedMinutes !== undefined ? (
                                                             <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-amber-500/20 bg-amber-500/5 text-amber-400 font-mono flex items-center gap-1">
                                                                 <TrendingUp className="w-3 h-3" /> {item.allocatedMinutes}m today (of {item.estimatedMinutes}m)
                                                             </span>
