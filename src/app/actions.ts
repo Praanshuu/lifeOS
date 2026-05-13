@@ -397,6 +397,15 @@ export async function addPlanItem(taskId: string, tier: string = "target", alloc
     const existingItems = await db.select({ position: dailyPlans.position }).from(dailyPlans).where(and(eq(dailyPlans.date, today), eq(dailyPlans.userId, userId)));
     const nextPosition = existingItems.length > 0 ? Math.max(...existingItems.map(i => i.position)) + 1 : 1;
 
+    // Fetch task metadata for safety slice
+    const taskRows = await db.select({ estimatedMinutes: tasks.estimatedMinutes }).from(tasks).where(eq(tasks.id, taskId)).limit(1);
+    const est = taskRows[0]?.estimatedMinutes || 0;
+    
+    let finalAllocation = allocatedMinutes;
+    if (!finalAllocation && est > 60) {
+        finalAllocation = 45; // Default 45m slice for large tasks added manually
+    }
+
     const result = await db.insert(dailyPlans).values({
         userId,
         date: today,
@@ -404,7 +413,7 @@ export async function addPlanItem(taskId: string, tier: string = "target", alloc
         position: nextPosition,
         tier,
         status: "planned",
-        allocatedMinutes: allocatedMinutes || null,
+        allocatedMinutes: finalAllocation || null,
     }).returning();
     
     revalidatePath("/");

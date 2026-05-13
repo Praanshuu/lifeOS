@@ -169,7 +169,7 @@ export async function generateDailyPlan(userId: string, date: Date, userIntentio
 
                 try {
                     const taskRows = await db
-                        .select({ id: tasks.id })
+                        .select({ id: tasks.id, estimatedMinutes: tasks.estimatedMinutes })
                         .from(tasks)
                         .where(and(eq(tasks.id, args.taskId), eq(tasks.userId, userId)))
                         .limit(1);
@@ -182,13 +182,22 @@ export async function generateDailyPlan(userId: string, date: Date, userIntentio
                         continue;
                     }
 
+                    const est = taskRows[0].estimatedMinutes || 0;
+                    const focusWindow = (behaviour_ctx?.typicalFocusWindowMinutes && behaviour_ctx.typicalFocusWindowMinutes > 0) ? behaviour_ctx.typicalFocusWindowMinutes : 45;
+
+                    // Safety Slice: If AI missed it, calculate it.
+                    let finalAllocation = args.allocatedMinutes;
+                    if (!finalAllocation && est > focusWindow * 1.5) {
+                        finalAllocation = focusWindow;
+                    }
+
                     await db.insert(dailyPlans).values({
                         userId,
                         date: dateStr,
                         taskId: args.taskId,
                         position: args.position,
                         tier: args.tier,
-                        allocatedMinutes: args.allocatedMinutes || null,
+                        allocatedMinutes: finalAllocation || null,
                         rationale: args.rationale,
                         status: "planned",
                     });
