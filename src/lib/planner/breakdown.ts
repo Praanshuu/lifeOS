@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
+import { localDateStr } from "@/lib/utils";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
@@ -32,7 +33,7 @@ const GENERATE_SUBTASKS_TOOL = {
 };
 
 export async function generateTaskBreakdown(userId: string, parentTaskId: string, parentTitle: string, goalId: string | null, dueDate: string | null, guidance: string) {
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDateStr();
 
     const parentRows = await db
         .select({

@@ -1,4 +1,5 @@
-const TODAY = new Date().toISOString().split("T")[0];
+import { localDateStr } from "@/lib/utils";
+const TODAY = localDateStr();
 
 // ──────────────────────────────────────────────────────────────
 // BODYGUARD — Weekly Report mode

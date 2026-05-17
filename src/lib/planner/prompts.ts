@@ -1,4 +1,5 @@
-const TODAY = new Date().toISOString().split("T")[0];
+import { localDateStr } from "@/lib/utils";
+const TODAY = localDateStr();
 
 export const SYSTEM_PROMPT_PLANNER = `You are the LifeOS Daily Planning Engine. Your job is to generate a focused, realistic daily priority stack for the user. Today is ${TODAY}.
 

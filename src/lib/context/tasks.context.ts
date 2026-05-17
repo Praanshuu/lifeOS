@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { tasks, sessions, goals } from "@/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { localDateStr } from "@/lib/utils";
 
 export async function buildTasksContext(userId: string) {
     const allTasks = await db
@@ -27,7 +28,7 @@ export async function buildTasksContext(userId: string) {
         .groupBy(tasks.id, goals.title);
 
     const now = new Date();
-    const today = now.toISOString().split("T")[0];
+    const today = localDateStr(now);
 
     const parentIds = new Set(allTasks.filter(t => t.parentTaskId).map(t => t.parentTaskId!));
 
@@ -55,7 +56,7 @@ export async function buildTasksContext(userId: string) {
         if (parentIds.has(t.id)) return false; 
         if (t.parentTaskId) {
             if (!t.scheduledDate) return true;
-            return new Date(t.scheduledDate).toISOString().split("T")[0] <= today;
+            return localDateStr(new Date(t.scheduledDate)) <= today;
         }
         return true;
     });
@@ -78,8 +79,8 @@ export async function buildTasksContext(userId: string) {
             estimatedMinutes: t.estimatedMinutes,
             anticipatedFriction: t.anticipatedFriction,
             spentMinutes: Math.round(t.spentMinutes),
-            dueDate: t.dueDate ? new Date(t.dueDate).toISOString().split("T")[0] : null,
-            scheduledDate: t.scheduledDate ? new Date(t.scheduledDate).toISOString().split("T")[0] : null,
+            dueDate: t.dueDate ? localDateStr(new Date(t.dueDate)) : null,
+            scheduledDate: t.scheduledDate ? localDateStr(new Date(t.scheduledDate)) : null,
             goal: t.goalTitle || null,
             parentTask: t.parentTaskId ? allTasks.find(p => p.id === t.parentTaskId)?.title || null : null,
             isOverdue: t.dueDate && t.type !== "recurring" ? new Date(t.dueDate) < now : false,

@@ -3,6 +3,7 @@ import { dailyPlans, tasks, sessions } from "@/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { assembleContext } from "@/lib/context";
 import { SYSTEM_PROMPT_PLANNER } from "./prompts";
+import { localDateStr } from "@/lib/utils";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
@@ -37,7 +38,7 @@ const SCHEDULE_TASK_TOOL = {
 };
 
 export async function generateDailyPlan(userId: string, date: Date, userIntention?: string): Promise<{ success: boolean; count: number; error?: string }> {
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = localDateStr(date);
 
     // 1. Check if plan already exists for this date
     const existing = await db

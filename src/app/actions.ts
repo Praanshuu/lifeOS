@@ -6,6 +6,7 @@ import { eq, sql, gte, and, isNull, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { revalidatePath, unstable_noStore as noStore } from "next/cache";
 import { ensureUserSetup, requireUserId } from "@/lib/auth";
+import { localDateStr } from "@/lib/utils";
 
 async function getScopedUserId() {
     const userId = await requireUserId();
@@ -211,7 +212,7 @@ export async function completeTaskManually(taskId: string, spentMinutes: number,
     await db.update(tasks).set({ status: "completed" }).where(and(eq(tasks.id, taskId), eq(tasks.userId, userId)));
 
     // 3. Update any daily plan items for this task today
-    const today = now.toISOString().split("T")[0];
+    const today = localDateStr(now);
     await db.update(dailyPlans)
         .set({ status: "done" })
         .where(and(eq(dailyPlans.taskId, taskId), eq(dailyPlans.date, today), eq(dailyPlans.userId, userId)));
@@ -293,7 +294,7 @@ export async function startActivitySession(activityType: string) {
 export async function getTodaysPlan() {
     noStore();
     const userId = await getScopedUserId();
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDateStr();
     const result = await db
         .select({
             id: dailyPlans.id,
@@ -358,7 +359,7 @@ export async function updatePlanItemStatus(id: string, status: string, skipReaso
 
 export async function commitTodaysPlan() {
     const userId = await getScopedUserId();
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDateStr();
     await db
         .update(dailyPlans)
         .set({ committedAt: new Date() })
@@ -391,7 +392,7 @@ export async function removePlanItem(id: string) {
 
 export async function addPlanItem(taskId: string, tier: string = "target", allocatedMinutes?: number) {
     const userId = await getScopedUserId();
-    const today = new Date().toISOString().split("T")[0];
+    const today = localDateStr();
     
     // Find the current max position for today's plan to append at the bottom
     const existingItems = await db.select({ position: dailyPlans.position }).from(dailyPlans).where(and(eq(dailyPlans.date, today), eq(dailyPlans.userId, userId)));
