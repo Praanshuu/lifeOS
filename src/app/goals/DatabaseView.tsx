@@ -42,7 +42,6 @@ export default function DatabaseView({ initialTasks, initialGoals }: { initialTa
         
         setTasks(updatedTasks as Task[]);
         setGoals(updatedGoals as any[]);
-        router.refresh();
     }
 
     // Hierarchical enrichment

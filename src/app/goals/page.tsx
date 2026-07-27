@@ -8,8 +8,10 @@ export default async function GoalsPage() {
         return <div className="text-zinc-300">Sign in to access your goals.</div>;
     }
 
-    const tasks = await getTasks();
-    const goals = await getGoals();
+    const [tasks, goals] = await Promise.all([
+        getTasks(),
+        getGoals(),
+    ]);
     
     return (
         <div className="flex flex-col w-full animate-in fade-in duration-300">

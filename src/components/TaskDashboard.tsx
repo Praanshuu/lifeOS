@@ -161,13 +161,8 @@ export default function TaskDashboard({
     const draggedIdRef = useRef<string | null>(null);
     const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-    // Initial data refresh
-    useEffect(() => {
-        refreshData();
-    }, []);
-
+    // Refresh helper without forced full re-renders unless necessary
     const refreshData = async () => {
-        // Run all queries in parallel to significantly reduce latency
         const [updatedTasks, updatedSessions, freshPlan, updatedGoals] = await Promise.all([
             getTasks(),
             getSessionsForToday(),
@@ -179,8 +174,6 @@ export default function TaskDashboard({
         setSessions(updatedSessions as any[]);
         setPlan(freshPlan as any[]);
         setGoals(updatedGoals as any[]);
-        
-        router.refresh();
     }
 
     // Timer Sync
@@ -235,63 +228,91 @@ export default function TaskDashboard({
     };
 
     const toggleSession = async (taskId: string) => {
-        if (activeTaskId === taskId) {
-            if (activeSessionId) await stopSession(activeSessionId);
-            await refreshData();
+        const isCurrent = activeTaskId === taskId;
+        if (isCurrent) {
+            setActiveTaskId(null);
+            setActiveSessionId(null);
+            setSessionStartTime(null);
+            if (activeSessionId) {
+                await stopSession(activeSessionId);
+            }
         } else {
             if (activeSessionId) await stopSession(activeSessionId);
-            await startSession(taskId);
-            await refreshData();
+            setActiveTaskId(taskId);
+            setSessionStartTime(new Date());
+            const newSessionId = await startSession(taskId);
+            setActiveSessionId(newSessionId);
         }
+        const updatedSessions = await getSessionsForToday();
+        setSessions(updatedSessions as any[]);
     }
 
     const handleQuickActivity = async (activityType: string) => {
         if (activeSessionId) await stopSession(activeSessionId);
-        await startActivitySession(activityType);
-        await refreshData();
+        const newId = await startActivitySession(activityType);
+        if (newId) setActiveSessionId(newId);
+        const updatedSessions = await getSessionsForToday();
+        setSessions(updatedSessions as any[]);
     }
 
     const markStatus = (id: string, status: string, skipReason?: string, skipTrigger?: string) => {
+        setPlan(prev => prev.map(p =>
+            p.id === id ? { 
+                ...p, 
+                status: status as any, 
+                skipReason: skipReason || (p as any).skipReason,
+                skipTrigger: skipTrigger || (p as any).skipTrigger
+            } : p
+        ));
         startTransition(async () => {
             await updatePlanItemStatus(id, status, skipReason, skipTrigger);
-            setPlan(prev => prev.map(p =>
-                p.id === id ? { 
-                    ...p, 
-                    status: status as any, 
-                    skipReason: skipReason || (p as any).skipReason,
-                    skipTrigger: skipTrigger || (p as any).skipTrigger
-                } : p
-            ));
-            await refreshData(); // To sync task completion globally if needed
         });
     };
 
     const handleCommit = () => {
+        setPlan(prev => prev.map(p => ({ ...p, committedAt: new Date().toISOString() })));
         startTransition(async () => {
             await commitTodaysPlan();
-            setPlan(prev => prev.map(p => ({ ...p, committedAt: new Date().toISOString() })));
         });
     };
 
     const handleRemoveFromPlan = (id: string) => {
+        setPlan(prev => prev.filter(p => p.id !== id));
         startTransition(async () => {
             await removePlanItem(id);
-            setPlan(prev => prev.filter(p => p.id !== id));
         });
     };
 
     const handleAddToPlan = (taskId: string, tier: string = "target") => {
+        const taskObj = tasks.find(t => t.id === taskId);
+        const tempId = "temp-" + Date.now();
+        const est = taskObj?.estimatedMinutes || 30;
+        let finalAllocation = est > 60 ? 45 : est;
+
+        setPlan(prev => [...prev, { 
+            id: tempId,
+            date: new Date().toISOString().split("T")[0],
+            taskId,
+            position: prev.length + 1,
+            tier,
+            status: "planned",
+            taskTitle: taskObj?.title || "", 
+            estimatedMinutes: est,
+            allocatedMinutes: finalAllocation || null,
+            priority: taskObj?.priority || "medium",
+            spentMinutes: 0 
+        } as any]);
+
         startTransition(async () => {
             const newItem = await addPlanItem(taskId, tier);
-            const taskObj = tasks.find(t => t.id === taskId);
-            setPlan(prev => [...prev, { 
-                ...newItem, 
-                taskTitle: taskObj?.title || "", 
-                estimatedMinutes: taskObj?.estimatedMinutes || 30,
+            setPlan(prev => prev.map(p => p.id === tempId ? {
+                ...newItem,
+                taskTitle: taskObj?.title || "",
+                estimatedMinutes: est,
                 allocatedMinutes: newItem.allocatedMinutes || null,
                 priority: taskObj?.priority || "medium",
-                spentMinutes: 0 
-            } as any]);
+                spentMinutes: 0
+            } as any : p));
         });
     };
 

@@ -10,10 +10,12 @@ export default async function Home() {
     return <div className="text-zinc-300">Sign in to load your dashboard.</div>;
   }
 
-  const tasks = await getTasks();
-  const sessions = await getSessionsForToday();
-  const goals = await getGoals();
-  const plan = await getTodaysPlan();
+  const [tasks, sessions, goals, plan] = await Promise.all([
+    getTasks(),
+    getSessionsForToday(),
+    getGoals(),
+    getTodaysPlan(),
+  ]);
 
   const nudges = computeNudges(tasks as any[], sessions as any[]);
 

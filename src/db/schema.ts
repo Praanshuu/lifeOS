@@ -44,6 +44,8 @@ export const tasks = pgTable("tasks", {
   }),
 }, (table) => ({
   userIdx: index("idx_tasks_user").on(table.userId),
+  goalIdx: index("idx_tasks_goal").on(table.goalId),
+  parentTaskIdx: index("idx_tasks_parent").on(table.parentTaskId),
 }));
 
 // Goals table
@@ -73,6 +75,8 @@ export const sessions = pgTable("sessions", {
   frictionLog: text("friction_log"),
 }, (table) => ({
   userIdx: index("idx_sessions_user").on(table.userId),
+  taskIdx: index("idx_sessions_task").on(table.taskId),
+  activityIdx: index("idx_sessions_activity").on(table.activityId),
 }));
 
 // Day logs table
@@ -104,4 +108,6 @@ export const dailyPlans = pgTable("daily_plans", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => ({
   userIdx: index("idx_daily_plans_user").on(table.userId),
+  userDateIdx: index("idx_daily_plans_user_date").on(table.userId, table.date),
+  taskIdx: index("idx_daily_plans_task").on(table.taskId),
 }));

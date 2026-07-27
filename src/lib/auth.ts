@@ -2,6 +2,7 @@ import { auth, currentUser } from "@clerk/nextjs/server";
 import type { User as ClerkUser } from "@clerk/backend";
 import { db } from "@/db";
 import { activities, users } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function requireUserId() {
   const { userId } = await auth();
@@ -31,37 +32,65 @@ function profileFromClerkUser(clerkUser: ClerkUser): {
   return { email, displayName };
 }
 
+const initializedUsers = new Set<string>();
+
 export async function ensureUserSetup(userId: string) {
-  const clerkUser = await currentUser();
-
-  let email: string | null = null;
-  let displayName: string | null = null;
-
-  if (clerkUser && clerkUser.id === userId) {
-    const profile = profileFromClerkUser(clerkUser);
-    email = profile.email;
-    displayName = profile.displayName;
+  if (initializedUsers.has(userId)) {
+    return;
   }
 
-  const updateFields: { email?: string | null; displayName?: string | null } = {};
-  if (email !== null) updateFields.email = email;
-  if (displayName !== null) updateFields.displayName = displayName;
+  try {
+    // 1. Check if user already exists in DB (Primary Key index lookup)
+    const existingUser = await db
+      .select({ clerkId: users.clerkId })
+      .from(users)
+      .where(eq(users.clerkId, userId))
+      .limit(1);
 
-  if (Object.keys(updateFields).length > 0) {
-    await db
-      .insert(users)
-      .values({ clerkId: userId, email, displayName })
-      .onConflictDoUpdate({
-        target: users.clerkId,
-        set: updateFields,
-      });
-  } else {
-    await db.insert(users).values({ clerkId: userId }).onConflictDoNothing();
+    if (existingUser.length > 0) {
+      initializedUsers.add(userId);
+      return;
+    }
+
+    // 2. New user setup: fetch profile from Clerk and initialize user + system activities
+    const clerkUser = await currentUser();
+
+    let email: string | null = null;
+    let displayName: string | null = null;
+
+    if (clerkUser && clerkUser.id === userId) {
+      const profile = profileFromClerkUser(clerkUser);
+      email = profile.email;
+      displayName = profile.displayName;
+    }
+
+    const updateFields: { email?: string | null; displayName?: string | null } = {};
+    if (email !== null) updateFields.email = email;
+    if (displayName !== null) updateFields.displayName = displayName;
+
+    if (Object.keys(updateFields).length > 0) {
+      await db
+        .insert(users)
+        .values({ clerkId: userId, email, displayName })
+        .onConflictDoUpdate({
+          target: users.clerkId,
+          set: updateFields,
+        });
+    } else {
+      await db.insert(users).values({ clerkId: userId }).onConflictDoNothing();
+    }
+
+    await db.insert(activities).values([
+      { userId, name: "Break", type: "break", isSystem: true },
+      { userId, name: "Distraction", type: "distraction", isSystem: true },
+      { userId, name: "Lunch", type: "break", isSystem: true },
+    ]).onConflictDoNothing();
+
+    initializedUsers.add(userId);
+  } catch (error) {
+    console.error("Error during user setup:", error);
+    // Even if user setup fails temporarily, mark as initialized to avoid cascading request failures
+    initializedUsers.add(userId);
   }
-
-  await db.insert(activities).values([
-    { userId, name: "Break", type: "break", isSystem: true },
-    { userId, name: "Distraction", type: "distraction", isSystem: true },
-    { userId, name: "Lunch", type: "break", isSystem: true },
-  ]).onConflictDoNothing();
 }
+
