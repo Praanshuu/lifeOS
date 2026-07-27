@@ -40,6 +40,7 @@ export default async function BodyguardPage() {
                 commitmentScore={commitmentScore}
                 totalFocusHours={totalFocusHours}
                 pendingHighPriority={pendingHighPriority}
+                contextData={context}
             />
         </div>
     );
