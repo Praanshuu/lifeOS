@@ -155,6 +155,7 @@ export default function TaskDashboard({
     const [showManualList, setShowManualList] = useState(false);
     const [showReality, setShowReality] = useState(false);
     const [intention, setIntention] = useState("");
+    const [capacityHours, setCapacityHours] = useState<string>("");
     const [isPending, startTransition] = useTransition();
 
     // Drag state
@@ -442,7 +443,18 @@ export default function TaskDashboard({
                                 placeholder="Steer AI: e.g. Focus on Exam"
                                 value={intention}
                                 onChange={(e) => setIntention(e.target.value)}
-                                className="hidden sm:block text-xs px-3 py-2.5 rounded-xl border border-white/5 bg-zinc-900/50 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 w-48 transition-colors"
+                                className="hidden sm:block text-xs px-3 py-2.5 rounded-xl border border-white/5 bg-zinc-900/50 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 w-44 transition-colors"
+                             />
+                             <input
+                                type="number"
+                                step="0.5"
+                                min="1"
+                                max="12"
+                                placeholder="Target: 6h"
+                                title="Optional target daily focus capacity in hours"
+                                value={capacityHours}
+                                onChange={(e) => setCapacityHours(e.target.value)}
+                                className="hidden sm:block text-xs px-2.5 py-2.5 rounded-xl border border-white/5 bg-zinc-900/50 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 w-24 text-center font-mono transition-colors"
                              />
                              <button
                                 onClick={generatePlan}

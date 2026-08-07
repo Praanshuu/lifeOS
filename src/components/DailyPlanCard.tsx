@@ -115,6 +115,7 @@ function SkipReflectionModal({ type, onConfirm, onCancel }: { type: "skipped" | 
 export default function DailyPlanCard({ initialPlan }: { initialPlan: DailyPlanItem[] }) {
     const [plan, setPlan] = useState<DailyPlanItem[]>(initialPlan);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [targetHours, setTargetHours] = useState<string>("");
     const [reflectionPrompt, setReflectionPrompt] = useState<{id: string, type: 'skipped' | 'blocked'} | null>(null);
     const [completionPrompt, setCompletionPrompt] = useState<{id: string, title: string, estimatedMinutes: number, taskId: string} | null>(null);
     const [isPending, startTransition] = useTransition();
@@ -135,12 +136,20 @@ export default function DailyPlanCard({ initialPlan }: { initialPlan: DailyPlanI
     const refreshSpent = plan.filter(p => p.tier === "refresh").reduce((acc, p) => acc + (p.spentMinutes || 0), 0);
     const refreshRatio = todayFocusMinutes > 0 ? (refreshSpent / todayFocusMinutes) * 100 : 0;
 
+    const totalAllocatedMinutes = stackItems.reduce((acc, p) => acc + (p.allocatedMinutes || p.estimatedMinutes || 0), 0);
+    const totalAllocatedHours = (totalAllocatedMinutes / 60).toFixed(1);
+
     // ── Plan actions ──────────────────────────────────────────────────────────
 
     const generatePlan = async () => {
         setIsGenerating(true);
         try {
-            const res = await fetch("/api/ai/plan/generate", { method: "POST" });
+            const overrideMins = targetHours ? parseFloat(targetHours) * 60 : undefined;
+            const res = await fetch("/api/ai/plan/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ capacityOverrideMinutes: overrideMins })
+            });
             if (res.ok) {
                 const fresh = await getTodaysPlan();
                 setPlan(fresh as any);
@@ -158,8 +167,6 @@ export default function DailyPlanCard({ initialPlan }: { initialPlan: DailyPlanI
                     return { 
                         ...p, 
                         status: status as any, 
-                        // Note: Depending on your DailyPlanItem type, you might need to use blockerReason or skipReason.
-                        // Since we updated schema.ts to skipReason and skipTrigger, we use them here.
                         skipReason: skipReason || (p as any).skipReason, 
                         skipTrigger: skipTrigger || (p as any).skipTrigger 
                     };
@@ -244,16 +251,29 @@ export default function DailyPlanCard({ initialPlan }: { initialPlan: DailyPlanI
                 </div>
                 <div>
                     <h2 className="text-sm font-semibold text-zinc-100 mb-1">No plan for today</h2>
-                    <p className="text-xs text-zinc-500">The AI will analyse your goals, deadlines, and focus patterns to generate your priority stack.</p>
+                    <p className="text-xs text-zinc-500">The AI will analyze your goals, deadlines, and focus capacity to generate your priority stack.</p>
                 </div>
-                <button
-                    onClick={generatePlan}
-                    disabled={isGenerating}
-                    className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors disabled:opacity-60"
-                >
-                    {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                    {isGenerating ? "Generating..." : "Generate Today's Plan"}
-                </button>
+                <div className="flex items-center gap-2">
+                    <input
+                        type="number"
+                        step="0.5"
+                        min="1"
+                        max="12"
+                        placeholder="Target: 6h"
+                        title="Target daily focus capacity in hours"
+                        value={targetHours}
+                        onChange={(e) => setTargetHours(e.target.value)}
+                        className="text-xs px-3 py-2 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 w-28 text-center font-mono"
+                    />
+                    <button
+                        onClick={generatePlan}
+                        disabled={isGenerating}
+                        className="flex items-center gap-2 bg-cyan-500 hover:bg-cyan-400 text-zinc-950 text-sm font-semibold px-5 py-2 rounded-xl transition-colors disabled:opacity-60"
+                    >
+                        {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        {isGenerating ? "Generating..." : "Generate Today's Plan"}
+                    </button>
+                </div>
             </div>
         );
     }
@@ -293,7 +313,12 @@ export default function DailyPlanCard({ initialPlan }: { initialPlan: DailyPlanI
                     <div className="flex items-center gap-3">
                         <Sparkles className="h-4 w-4 text-cyan-500" />
                         <div>
-                            <h2 className="text-sm font-semibold text-zinc-100">Today's Priority Stack</h2>
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-sm font-semibold text-zinc-100">Today's Priority Stack</h2>
+                                <span className="text-[10px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full">
+                                    {totalAllocatedHours}h focus budget
+                                </span>
+                            </div>
                             <p className="text-[11px] text-zinc-500 mt-0.5">
                                 AI-generated · {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
                             </p>
@@ -308,10 +333,21 @@ export default function DailyPlanCard({ initialPlan }: { initialPlan: DailyPlanI
                                 <span className="text-zinc-600">committed</span>
                             </div>
                         )}
+                        <input
+                            type="number"
+                            step="0.5"
+                            min="1"
+                            max="12"
+                            placeholder="6h"
+                            title="Adjust target daily capacity in hours"
+                            value={targetHours}
+                            onChange={(e) => setTargetHours(e.target.value)}
+                            className="hidden sm:block text-xs px-2 py-1 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-cyan-500/50 w-16 text-center font-mono"
+                        />
                         <button
                             onClick={generatePlan}
                             disabled={isGenerating}
-                            title="Regenerate plan"
+                            title="Regenerate plan with current target capacity"
                             className="p-1.5 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 rounded-lg transition-colors disabled:opacity-40"
                         >
                             {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCcw className="h-4 w-4" />}
