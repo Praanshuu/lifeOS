@@ -39,11 +39,11 @@ async function extractAndExecuteTextToolCalls(userId: string, text: string): Pro
     actionsExecuted: string[];
 }> {
     const actionsExecuted: string[] = [];
-    const stripped = text.replace(/<tools>[\s\S]*?<\/tools>/g, "").trim();
+    let cleanText = text.replace(/<tools>[\s\S]*?<\/tools>/g, "");
 
     const jsonPattern = /\{\s*"name"\s*:\s*"(\w+)"\s*,\s*"arguments"\s*:\s*(\{[\s\S]*?\})\s*\}/g;
     let match;
-    const toExecute: Array<{ name: string; args: Record<string, unknown> }> = [];
+    const toExecute: Array<{ name: string; args: Record<string, unknown>; fullMatch: string }> = [];
 
     while ((match = jsonPattern.exec(text)) !== null) {
         try {
@@ -51,7 +51,7 @@ async function extractAndExecuteTextToolCalls(userId: string, text: string): Pro
             const args = JSON.parse(match[2]);
             const validTools = ["create_task", "update_task", "delete_task", "create_goal", "suggest_system_improvement", "start_activity_session"];
             if (validTools.includes(name)) {
-                toExecute.push({ name, args });
+                toExecute.push({ name, args, fullMatch: match[0] });
             }
         } catch { /* Skip malformed JSON */ }
     }
@@ -61,15 +61,11 @@ async function extractAndExecuteTextToolCalls(userId: string, text: string): Pro
         if (result.success) {
             actionsExecuted.push(`✓ ${result.message}`);
         }
+        // Only strip the exact matched tool call JSON, preserving markdown & ```viz blocks
+        cleanText = cleanText.replace(tc.fullMatch, "");
     }
 
-    const cleanText = stripped
-        .replace(jsonPattern, "")
-        .replace(/```json[\s\S]*?```/g, "")
-        .replace(/```[\s\S]*?```/g, "")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-
+    cleanText = cleanText.replace(/\n{3,}/g, "\n\n").trim();
     return { cleanText, actionsExecuted };
 }
 
@@ -98,79 +94,72 @@ function formatStructuredContext(ctx: Record<string, unknown>): Record<string, u
     }
 
     if (ctx.tasks) {
-        const t = ctx.tasks as any;
+        const tasks = ctx.tasks as any;
+        const pending = (tasks.pendingTasks || []).slice(0, 15).map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            priority: t.priority,
+            estimatedMinutes: t.estimatedMinutes,
+            spentMinutes: t.spentMinutes,
+            remainingMinutes: t.remainingMinutes,
+            goalId: t.goalId,
+            friction: t.friction,
+            isOverdue: t.isOverdue,
+            isRecurring: t.isRecurring,
+        }));
+        const completed = (tasks.recentlyCompleted || []).slice(0, 8).map((t: any) => ({
+            id: t.id,
+            title: t.title,
+            priority: t.priority,
+        }));
         out.tasks = {
-            total: t.totalTasks,
-            done: t.completedCount,
-            overdue: t.overdueCount,
-            highPriorityPending: t.highPriorityPendingCount,
-            pending: (t.pending as any[]).slice(0, 30).map((p: any) => ({
-                id: p.id,
-                title: p.title,
-                priority: p.priority,
-                type: p.type,
-                status: p.status,
-                due: p.dueDate,
-                est: p.estimatedMinutes,
-                spent: p.spentMinutes,
-                remaining: p.remainingMinutes,
-                friction: p.anticipatedFriction,
-                goal: p.goal,
-                parent: p.parentTask,
-            })),
-            compositeTasks: (t.compositeTasks as any[] || []).map((c: any) => ({
-                id: c.id,
-                title: c.title,
-                goal: c.goal,
-            })),
+            totalPending: tasks.totalPending,
+            overdueCount: tasks.overdueCount,
+            highPriorityPendingCount: tasks.highPriorityPendingCount,
+            pending,
+            completed,
         };
     }
 
     if (ctx.sessions) {
-        const s = ctx.sessions as any;
+        const sess = ctx.sessions as any;
         out.sessions = {
-            avgFocusMin: s.avgDailyFocusMinutes,
-            todayFocusMin: s.todayFocusMinutes,
-            todayBreakMin: s.todayBreakMinutes,
-            todayDistractionMin: s.todayDistractionMinutes,
-            recentDays: (s.dailySummaries as any[]).slice(-5).map((d: any) => ({
-                date: d.date,
-                focusMin: d.totalMinutes,
-                breakMin: d.breakMinutes,
-                distractionMin: d.distractionMinutes,
-                contextSwitches: d.contextSwitches,
-            })),
+            totalSessions: sess.totalSessions,
+            totalMinutes: sess.totalMinutes,
+            avgSessionLengthMinutes: sess.avgSessionLengthMinutes,
+            todayFocusMinutes: sess.todayFocusMinutes,
+            todayBreakMinutes: sess.todayBreakMinutes,
+            todayDistractionMinutes: sess.todayDistractionMinutes,
+            recentDays: (sess.recentDailyFocus || []).slice(-7),
         };
     }
 
     if (ctx.patterns) {
-        const p = ctx.patterns as any;
+        const pat = ctx.patterns as any;
         out.patterns = {
-            commitmentScore: p.commitmentScore,
-            avgSessionLengthMinutes: p.avgSessionLengthMinutes,
-            peakHour: p.peakHour,
-            mostProductiveDay: p.mostProductiveDay,
-            highPriorityFocusPercent: p.highPriorityFocusPercent,
+            commitmentScore: pat.commitmentScore,
+            totalFocusHours: pat.totalFocusHours,
+            avgDailyFocusMinutes: pat.avgDailyFocusMinutes,
+            highPriorityFocusPercent: pat.highPriorityFocusPercent,
+            plannedVsUnplannedRatio: pat.plannedVsUnplannedRatio,
+            avgSessionLengthMinutes: pat.avgSessionLengthMinutes,
+            distractionFrequencyPerHour: pat.distractionFrequencyPerHour,
+            topDistractionTriggers: pat.topDistractionTriggers || [],
+            topSkipReasons: pat.topSkipReasons || [],
         };
     }
 
     if (ctx.behaviour) {
-        const b = ctx.behaviour as any;
+        const beh = ctx.behaviour as any;
         out.behaviour = {
-            completionRateByTier: b.completionRateByTier,
-            avgSessionVsEstimateRatio: b.avgSessionVsEstimateRatio,
-            topBlockerReasons: b.topBlockerReasons,
-            topSkipTriggers: b.topSkipTriggers,
-            typicalFocusWindowMinutes: b.typicalFocusWindowMinutes,
+            avgSessionVsEstimateRatio: beh.avgSessionVsEstimateRatio,
+            typicalFocusWindowMinutes: beh.typicalFocusWindowMinutes,
         };
     }
 
     return out;
 }
 
-// ──────────────────────────────────────────────
-// Main POST handler
-// ──────────────────────────────────────────────
 export async function POST(req: NextRequest) {
     try {
         const { userId } = await auth();
@@ -181,22 +170,22 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const {
             mode = "chat",
-            message,
-            model,
+            model = "",
+            message = "",
             history = [],
         }: {
-            mode: AgentMode;
-            message: string;
+            mode?: AgentMode;
             model?: string;
-            history?: Array<{ role: "user" | "assistant"; content: string }>;
+            message?: string;
+            history?: Array<{ role: string; content: string }>;
         } = body;
 
         const config = MODE_CONFIG[mode] || MODE_CONFIG.chat;
 
-        // ── 1. Assemble full LifeOS context ──
+        // ── 1. Assemble structured & bounded LifeOS Context ──
         const rawContext = await assembleContext(userId, config.modules, config.days);
         const structuredContext = formatStructuredContext(rawContext);
-        const contextJson = JSON.stringify(structuredContext);
+        const contextJson = JSON.stringify(structuredContext, null, 2);
 
         const userMessage = message || (mode === "weekly-report" ? "Generate my performance report." : "Hello");
 
