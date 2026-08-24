@@ -69,22 +69,28 @@ export async function buildTasksContext(userId: string) {
 
     return {
         totalTasks: allTasks.length,
-        pending: pendingLeaf.map(t => ({
-            id: t.id,
-            title: t.title,
-            status: t.status,
-            type: t.type,
-            recurrenceRule: t.recurrenceRule,
-            priority: t.priority,
-            estimatedMinutes: t.estimatedMinutes,
-            anticipatedFriction: t.anticipatedFriction,
-            spentMinutes: Math.round(t.spentMinutes),
-            dueDate: t.dueDate ? localDateStr(new Date(t.dueDate)) : null,
-            scheduledDate: t.scheduledDate ? localDateStr(new Date(t.scheduledDate)) : null,
-            goal: t.goalTitle || null,
-            parentTask: t.parentTaskId ? allTasks.find(p => p.id === t.parentTaskId)?.title || null : null,
-            isOverdue: t.dueDate && t.type !== "recurring" ? new Date(t.dueDate) < now : false,
-        })),
+        pending: pendingLeaf.map(t => {
+            const spent = Math.round(t.spentMinutes);
+            const est = t.estimatedMinutes || 30;
+            const remaining = Math.max(0, est - spent);
+            return {
+                id: t.id,
+                title: t.title,
+                status: t.status,
+                type: t.type,
+                recurrenceRule: t.recurrenceRule,
+                priority: t.priority,
+                estimatedMinutes: est,
+                spentMinutes: spent,
+                remainingMinutes: remaining,
+                anticipatedFriction: t.anticipatedFriction || "medium",
+                dueDate: t.dueDate ? localDateStr(new Date(t.dueDate)) : null,
+                scheduledDate: t.scheduledDate ? localDateStr(new Date(t.scheduledDate)) : null,
+                goal: t.goalTitle || null,
+                parentTask: t.parentTaskId ? allTasks.find(p => p.id === t.parentTaskId)?.title || null : null,
+                isOverdue: t.dueDate && t.type !== "recurring" ? new Date(t.dueDate) < now : false,
+            };
+        }),
         // Composite tasks sent for context only — so AI understands the big picture
         compositeTasks: pendingComposite.map(t => ({
             id: t.id,

@@ -9,7 +9,7 @@ import {
 type AgentMode = "chat" | "weekly-report" | "goal-planner";
 type BgPattern = "dots" | "doodle" | "grid" | "none";
 type Message = { role: "user" | "assistant"; content: string };
-type ModelOption = { name: string; label: string; desc: string; source: "ollama" | "groq" };
+type ModelOption = { name: string; label: string; desc: string; source: "openrouter" | "ollama" | "groq" };
 type ModelsResponse = { models: ModelOption[]; error?: string; hint?: string };
 
 const MODE_INFO: Record<AgentMode, { label: string; icon: React.ReactNode; placeholder: string }> = {

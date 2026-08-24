@@ -1,15 +1,13 @@
 import { db } from "@/db";
 import { dailyPlans, tasks, sessions } from "@/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { assembleContext } from "@/lib/context";
 import { SYSTEM_PROMPT_PLANNER } from "./prompts";
 import { localDateStr } from "@/lib/utils";
+import { callAI, type AIMessage, type AITool } from "@/lib/ai/client";
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
-
-const SCHEDULE_TASK_TOOL = {
-    type: "function" as const,
+const SCHEDULE_TASK_TOOL: AITool = {
+    type: "function",
     function: {
         name: "schedule_task",
         description: "Adds a task to today's daily plan with specific time allocation.",
@@ -26,7 +24,7 @@ const SCHEDULE_TASK_TOOL = {
                 },
                 allocatedMinutes: {
                     type: "number",
-                    description: "Required. How many minutes are allocated for this task TODAY based on priority, deadline pace, and daily capacity."
+                    description: "Required. Minutes allocated for this task TODAY based on remaining effort, priority, and daily capacity upper bound."
                 },
                 rationale: {
                     type: "string",
@@ -162,8 +160,18 @@ export async function generateDailyPlan(
         ? capacityOverrideMinutes
         : capacityAnalysis.dailyCapacityMinutes;
 
+    const todayFocusMinutes = sessions_ctx?.todayFocusMinutes ?? 0;
+    const remainingCapacityMinutes = Math.max(0, dailyCapacityMinutes - todayFocusMinutes);
+
     const plannerContext = {
-        today: dateStr,
+        today: {
+            date: dateStr,
+            workCompletedTodayMinutes: todayFocusMinutes,
+            breakMinutesToday: sessions_ctx?.todayBreakMinutes ?? 0,
+            distractionMinutesToday: sessions_ctx?.todayDistractionMinutes ?? 0,
+            remainingCapacityMinutes,
+            userIntention: userIntention || "No specific intention provided. Optimize for high-leverage goals and realistic momentum.",
+        },
         capacity: {
             dailyCapacityMinutes,
             avgDailyFocusMinutes: sessions_ctx?.avgDailyFocusMinutes ?? 120,
@@ -181,16 +189,21 @@ export async function generateDailyPlan(
             emotionalReason: g.emotionalReason,
             daysLeft: g.daysUntilDeadline,
             progress: g.progress,
+            pendingTasks: g.pendingTasks,
+            isStagnant: g.isStagnant,
+            daysSinceLastSession: g.daysSinceLastSession,
         })),
         pendingTasks: (tasks_ctx?.pending as any[])
-            ?.slice(0, 40) // Keep the top 40 most relevant tasks to avoid rate limits
+            ?.slice(0, 40)
             .map((t: any) => ({
                 id: t.id,
                 title: t.title,
                 priority: t.priority,
+                type: t.type,
                 anticipatedFriction: t.anticipatedFriction,
                 estimatedMinutes: t.estimatedMinutes,
                 spentMinutes: t.spentMinutes,
+                remainingMinutes: t.remainingMinutes ?? Math.max(0, t.estimatedMinutes - t.spentMinutes),
                 dueDate: t.dueDate,
                 goal: t.goal,
                 parentTask: t.parentTask || null,
@@ -205,71 +218,59 @@ export async function generateDailyPlan(
             typicalFocusWindowMinutes: (behaviour_ctx?.typicalFocusWindowMinutes && behaviour_ctx.typicalFocusWindowMinutes > 0) ? behaviour_ctx.typicalFocusWindowMinutes : 45,
             sampleDays:              behaviour_ctx?.sampleDays              ?? 0,
         },
-        userIntention: userIntention || "No specific intention provided. Optimize for deadlines, priorities, and historical capacity.",
     };
 
-    // 4. Call Groq
+    // 4. Call AI Dispatcher (Nemotron 3 Super / OpenRouter / Groq / Ollama)
     let iterCount = 0;
-    const messages: any[] = [
-        { role: "user", content: `<context>${JSON.stringify(plannerContext)}</context>\n\nGenerate today's priority stack.` },
+    const messages: AIMessage[] = [
+        { role: "system", content: SYSTEM_PROMPT_PLANNER },
+        { role: "user", content: `<context>${JSON.stringify(plannerContext)}</context>\n\nReason through the user's goals, constraints, and current state. Generate today's priority stack.` },
     ];
 
     let scheduledCount = 0;
-    // Tracks which taskIds have already been inserted — prevents the AI from
-    // scheduling the same task twice across multiple tool-call rounds.
     const scheduledTaskIds = new Set<string>();
 
     while (iterCount < 6) {
         iterCount++;
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${GROQ_API_KEY}`,
-            },
-            body: JSON.stringify({
-                model: GROQ_MODEL,
-                messages: [{ role: "system", content: SYSTEM_PROMPT_PLANNER }, ...messages],
+        let aiResponse;
+        try {
+            aiResponse = await callAI({
+                messages,
                 tools: [SCHEDULE_TASK_TOOL],
-                tool_choice: "auto",
-                max_tokens: 1024,
+                toolChoice: "auto",
+                maxTokens: 2048,
                 temperature: 0.2,
-                stream: false,
-            }),
-            signal: AbortSignal.timeout(30_000),
-        });
-
-        if (!response.ok) {
-            const err = await response.text();
-            return { success: false, count: 0, error: `Groq error: ${err}` };
+            });
+        } catch (err) {
+            return { success: false, count: 0, error: `AI Planner error: ${err instanceof Error ? err.message : String(err)}` };
         }
 
-        const data = await response.json();
-        const choice = data.choices?.[0];
+        const toolCalls = aiResponse.tool_calls;
+        if (!toolCalls || toolCalls.length === 0) {
+            // No more tool calls → AI completed scheduling
+            break;
+        }
 
-        if (!choice) break;
-
-        const msg = choice.message;
-        messages.push(msg);
-
-        // No tool calls = done
-        if (!msg.tool_calls || msg.tool_calls.length === 0) break;
-        if (choice.finish_reason === "stop") break;
+        // Record assistant's message with tool calls
+        messages.push({
+            role: "assistant",
+            content: aiResponse.content,
+            tool_calls: toolCalls,
+        });
 
         // Execute tool calls
-        const toolResults: any[] = [];
-        for (const tc of msg.tool_calls) {
+        for (const tc of toolCalls) {
             const args = typeof tc.function.arguments === "string"
                 ? JSON.parse(tc.function.arguments)
                 : tc.function.arguments;
 
             if (tc.function.name === "schedule_task") {
-                // --- Duplicate guard ---
                 if (scheduledTaskIds.has(args.taskId)) {
-                    toolResults.push({
-                        tool_call_id: tc.id,
+                    messages.push({
                         role: "tool",
-                        content: JSON.stringify({ success: false, reason: "already_scheduled", message: "This task is already in the plan. Choose a different task." }),
+                        tool_call_id: tc.id,
+                        name: "schedule_task",
+                        content: JSON.stringify({ success: false, reason: "already_scheduled", message: "This task is already in the plan. Choose a different task or finish." }),
                     });
                     continue;
                 }
@@ -280,10 +281,12 @@ export async function generateDailyPlan(
                         .from(tasks)
                         .where(and(eq(tasks.id, args.taskId), eq(tasks.userId, userId)))
                         .limit(1);
+
                     if (taskRows.length === 0) {
-                        toolResults.push({
-                            tool_call_id: tc.id,
+                        messages.push({
                             role: "tool",
+                            tool_call_id: tc.id,
+                            name: "schedule_task",
                             content: JSON.stringify({ success: false, reason: "task_not_found", message: "Task not found for this user." }),
                         });
                         continue;
@@ -292,7 +295,6 @@ export async function generateDailyPlan(
                     const est = taskRows[0].estimatedMinutes || 30;
                     const focusWindow = (behaviour_ctx?.typicalFocusWindowMinutes && behaviour_ctx.typicalFocusWindowMinutes > 0) ? behaviour_ctx.typicalFocusWindowMinutes : 45;
 
-                    // Fallback allocation guarantee: Ensure allocatedMinutes is NEVER null for scheduled tasks
                     let finalAllocation = typeof args.allocatedMinutes === "number" && args.allocatedMinutes > 0
                         ? args.allocatedMinutes
                         : (args.tier === "refresh" ? Math.min(30, est) : Math.min(est, focusWindow));
@@ -307,27 +309,27 @@ export async function generateDailyPlan(
                         rationale: args.rationale,
                         status: "planned",
                     });
+
                     scheduledTaskIds.add(args.taskId);
                     scheduledCount++;
-                    toolResults.push({
-                        tool_call_id: tc.id,
+
+                    messages.push({
                         role: "tool",
-                        content: JSON.stringify({ success: true, message: `Scheduled task at position ${args.position} with ${finalAllocation}m allocated.` }),
+                        tool_call_id: tc.id,
+                        name: "schedule_task",
+                        content: JSON.stringify({ success: true, message: `Scheduled task at position ${args.position} with ${Math.round(finalAllocation)}m allocated.` }),
                     });
                 } catch (e) {
-                    toolResults.push({
-                        tool_call_id: tc.id,
+                    messages.push({
                         role: "tool",
+                        tool_call_id: tc.id,
+                        name: "schedule_task",
                         content: JSON.stringify({ success: false, error: String(e) }),
                     });
                 }
             }
         }
-
-        messages.push(...toolResults);
-        if (choice.finish_reason === "stop") break;
     }
 
     return { success: true, count: scheduledCount, dailyCapacityMinutes };
 }
-

@@ -1,15 +1,19 @@
 import { db } from "@/db";
 import { sessions, tasks } from "@/db/schema";
-import { gte, sql, eq, and, isNotNull } from "drizzle-orm";
+import { gte, eq, and, isNotNull } from "drizzle-orm";
+import { localDateStr } from "@/lib/utils";
 
 export async function buildSessionsContext(userId: string, days = 14) {
     const since = new Date();
     since.setDate(since.getDate() - days);
     since.setHours(0, 0, 0, 0);
 
+    const todayStr = localDateStr();
+
     const rawSessions = await db
         .select({
             id: sessions.id,
+            type: sessions.type,
             taskId: sessions.taskId,
             taskTitle: tasks.title,
             taskPriority: tasks.priority,
@@ -25,36 +29,55 @@ export async function buildSessionsContext(userId: string, days = 14) {
     // Group by day
     const byDay: Record<string, typeof rawSessions> = {};
     for (const s of rawSessions) {
-        const day = new Date(s.startTime!).toISOString().split("T")[0];
+        if (!s.startTime) continue;
+        const day = localDateStr(new Date(s.startTime));
         if (!byDay[day]) byDay[day] = [];
         byDay[day].push(s);
     }
 
     const dailySummaries = Object.entries(byDay).map(([date, daySessions]) => {
-        const totalMinutes = daySessions.reduce((sum, s) => {
-            if (!s.endTime) return sum;
-            return sum + (new Date(s.endTime).getTime() - new Date(s.startTime!).getTime()) / 60000;
+        const focusSessions = daySessions.filter(s => s.type === "focus" || (!s.type && s.taskId));
+        const totalMinutes = focusSessions.reduce((sum, s) => {
+            if (!s.endTime || !s.startTime) return sum;
+            return sum + (new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000;
+        }, 0);
+
+        const breakMinutes = daySessions.filter(s => s.type === "break").reduce((sum, s) => {
+            if (!s.endTime || !s.startTime) return sum;
+            return sum + (new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000;
+        }, 0);
+
+        const distractionMinutes = daySessions.filter(s => s.type === "distraction").reduce((sum, s) => {
+            if (!s.endTime || !s.startTime) return sum;
+            return sum + (new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000;
         }, 0);
 
         // Count context switches (task changes within a day)
-        const uniqueTasks = new Set(daySessions.map(s => s.taskId)).size;
-        const contextSwitches = Math.max(0, daySessions.length - 1);
+        const uniqueTasks = new Set(focusSessions.map(s => s.taskId).filter(Boolean)).size;
+        const contextSwitches = Math.max(0, focusSessions.length - 1);
 
         return {
             date,
             totalMinutes: Math.round(totalMinutes),
+            breakMinutes: Math.round(breakMinutes),
+            distractionMinutes: Math.round(distractionMinutes),
             sessionCount: daySessions.length,
             uniqueTasksWorked: uniqueTasks,
             contextSwitches,
-            tasks: daySessions.map(s => ({
-                title: s.taskTitle,
-                priority: s.taskPriority,
-                minutesSpent: s.endTime
-                    ? Math.round((new Date(s.endTime).getTime() - new Date(s.startTime!).getTime()) / 60000)
+            tasks: focusSessions.map(s => ({
+                title: s.taskTitle || "Focus Session",
+                priority: s.taskPriority || "medium",
+                minutesSpent: s.endTime && s.startTime
+                    ? Math.round((new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000)
                     : 0,
             })),
         };
     });
+
+    const todaySummary = dailySummaries.find(d => d.date === todayStr);
+    const todayFocusMinutes = todaySummary?.totalMinutes ?? 0;
+    const todayBreakMinutes = todaySummary?.breakMinutes ?? 0;
+    const todayDistractionMinutes = todaySummary?.distractionMinutes ?? 0;
 
     const avgDailyMinutes = dailySummaries.length > 0
         ? Math.round(dailySummaries.reduce((s, d) => s + d.totalMinutes, 0) / dailySummaries.length)
@@ -64,6 +87,9 @@ export async function buildSessionsContext(userId: string, days = 14) {
         periodDays: days,
         avgDailyFocusMinutes: avgDailyMinutes,
         totalSessionsInPeriod: rawSessions.length,
+        todayFocusMinutes,
+        todayBreakMinutes,
+        todayDistractionMinutes,
         dailySummaries,
     };
 }

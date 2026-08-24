@@ -2,15 +2,13 @@ import { db } from "@/db";
 import { tasks } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { localDateStr } from "@/lib/utils";
+import { callAI, type AITool } from "@/lib/ai/client";
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
-const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
-
-const GENERATE_SUBTASKS_TOOL = {
-    type: "function" as const,
+const GENERATE_SUBTASKS_TOOL: AITool = {
+    type: "function",
     function: {
         name: "generate_micro_tasks",
-        description: "Generate daily micro-tasks to accomplish a large goal.",
+        description: "Generate daily micro-tasks to accomplish a large goal or parent task.",
         parameters: {
             type: "object",
             required: ["subtasks"],
@@ -32,7 +30,14 @@ const GENERATE_SUBTASKS_TOOL = {
     }
 };
 
-export async function generateTaskBreakdown(userId: string, parentTaskId: string, parentTitle: string, goalId: string | null, dueDate: string | null, guidance: string) {
+export async function generateTaskBreakdown(
+    userId: string,
+    parentTaskId: string,
+    parentTitle: string,
+    goalId: string | null,
+    dueDate: string | null,
+    guidance: string
+) {
     const today = localDateStr();
 
     const parentRows = await db
@@ -44,14 +49,13 @@ export async function generateTaskBreakdown(userId: string, parentTaskId: string
         .from(tasks)
         .where(and(eq(tasks.id, parentTaskId), eq(tasks.userId, userId)))
         .limit(1);
+
     if (parentRows.length === 0) {
         throw new Error("Parent task not found.");
     }
     const parentTask = parentRows[0];
     
-    // ─── Deduplication Guard ─────────────────────────────────────────────────────
-    // Delete any existing micro-tasks that were previously generated for this parent.
-    // This mirrors the daily planner's regenerate pattern — always start fresh.
+    // Deduplication Guard: Delete any existing micro-tasks for this parent
     await db.delete(tasks).where(and(eq(tasks.parentTaskId, parentTaskId), eq(tasks.userId, userId)));
     
     const context = {
@@ -61,43 +65,33 @@ export async function generateTaskBreakdown(userId: string, parentTaskId: string
         userGuidance: guidance
     };
 
-    const SYSTEM_PROMPT = `You are a micro-task breakdown engine.
-Your job is to take a monolithic high-level task and break it down into actionable daily micro-tasks.
-Follow the user's guidance strictly. If they say '1 chapter a day', generate tasks for each chapter across sequential days.
-Use the current date to start scheduling. Ensure the dates progress chronologically and do not exceed the deadline (if provided).
+    const SYSTEM_PROMPT = `You are the LifeOS Micro-Task Breakdown Engine.
+Your job is to take a monolithic parent task and break it down into realistic, sequential daily micro-tasks.
+Follow the user's guidance strictly (e.g., pace, chapters, phases).
+Ensure scheduled dates progress chronologically starting from today (${today}) and do not exceed the deadline (if provided).
+Assign realistic estimatedMinutes (e.g., 30–60 min per daily chunk).
 Call the generate_micro_tasks tool exactly once with the array of subtasks.`;
 
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-            model: GROQ_MODEL,
-            messages: [
-                { role: "system", content: SYSTEM_PROMPT },
-                { role: "user", content: `Context:\n${JSON.stringify(context, null, 2)}\n\nBreak this down!` }
-            ],
-            tools: [GENERATE_SUBTASKS_TOOL],
-            tool_choice: { type: "function", function: { name: "generate_micro_tasks" } },
-            max_tokens: 2048,
-            temperature: 0.2,
-        }),
+    const aiRes = await callAI({
+        messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: `Context:\n${JSON.stringify(context, null, 2)}\n\nBreak this down!` }
+        ],
+        tools: [GENERATE_SUBTASKS_TOOL],
+        toolChoice: { type: "function", function: { name: "generate_micro_tasks" } },
+        maxTokens: 2048,
+        temperature: 0.2,
     });
 
-    if (!response.ok) {
-        throw new Error("Failed to generate breakdown: " + await response.text());
-    }
-
-    const data = await response.json();
-    const toolCall = data.choices[0]?.message?.tool_calls?.[0];
-    
+    const toolCall = aiRes.tool_calls?.[0];
     if (!toolCall) {
-        throw new Error("AI failed to return subtasks.");
+        throw new Error("AI failed to return structured subtasks.");
     }
 
-    const args = JSON.parse(toolCall.function.arguments);
+    const args = typeof toolCall.function.arguments === "string"
+        ? JSON.parse(toolCall.function.arguments)
+        : toolCall.function.arguments;
+
     const subtasks = args.subtasks || [];
 
     if (subtasks.length > 0) {
