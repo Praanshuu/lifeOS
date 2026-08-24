@@ -59,14 +59,26 @@ export interface ModelOption {
 // ──────────────────────────────────────────────
 
 export function getAIConfig() {
-    const openRouterKey = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_NEMOTRON_3_SUPER_API_KEY || "";
-    const openRouterModel = process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-super-120b-a12b:free";
+    let openRouterKey = process.env.OPENROUTER_API_KEY || process.env.OPENROUTER_NEMOTRON_3_SUPER_API_KEY || "";
+    
+    // Safety check in case dotenv parsed with whitespace in key name
+    if (!openRouterKey) {
+        for (const [k, v] of Object.entries(process.env)) {
+            if (k.trim().toUpperCase().startsWith("OPENROUTER") && v) {
+                openRouterKey = v.trim();
+                break;
+            }
+        }
+    }
+    openRouterKey = openRouterKey.trim();
 
-    const groqKey = process.env.GROQ_API_KEY || "";
-    const groqModel = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+    let openRouterModel = (process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-super-120b-a12b:free").trim();
 
-    const ollamaUrl = process.env.OLLAMA_BASE_URL || "http://localhost:11434";
-    const ollamaModel = process.env.OLLAMA_DEFAULT_MODEL || "qwen2.5-coder:latest";
+    let groqKey = (process.env.GROQ_API_KEY || "").trim();
+    let groqModel = (process.env.GROQ_MODEL || "llama-3.3-70b-versatile").trim();
+
+    let ollamaUrl = (process.env.OLLAMA_BASE_URL || "http://localhost:11434").trim();
+    let ollamaModel = (process.env.OLLAMA_DEFAULT_MODEL || "qwen2.5-coder:latest").trim();
 
     return {
         openRouterKey,
@@ -102,24 +114,18 @@ export async function getAvailableModels(): Promise<ModelOption[]> {
     if (config.openRouterKey) {
         results.push({
             name: config.openRouterModel,
-            label: "NVIDIA Nemotron 3 Super 120B (OpenRouter)",
+            label: "NVIDIA Nemotron 3 Super 120B",
             desc: "Primary · Advanced Reasoning · Free",
             source: "openrouter",
         });
     }
 
-    // 2. Groq Cloud (Secondary)
+    // 2. Groq Cloud (Secondary - only if key is set)
     if (config.groqKey) {
         results.push({
-            name: "llama-3.3-70b-versatile",
-            label: "Llama 3.3 · 70B (Groq Cloud)",
-            desc: "Fast Inference · Free",
-            source: "groq",
-        });
-        results.push({
-            name: "llama-3.1-8b-instant",
-            label: "Llama 3.1 · 8B (Groq Cloud)",
-            desc: "Ultra Fast · Lightweight",
+            name: config.groqModel || "llama-3.3-70b-versatile",
+            label: "Groq Cloud (Fast Fallback)",
+            desc: "Ultra Fast · Cloud Fallback",
             source: "groq",
         });
     }
@@ -302,41 +308,54 @@ async function callOllama(
 }
 
 // ──────────────────────────────────────────────
-// Unified AI Dispatcher
+// Unified AI Dispatcher with Automatic Fallback
 // ──────────────────────────────────────────────
 
 export async function callAI(options: AICallOptions): Promise<AICallResponse> {
     const config = getAIConfig();
-    const requestedModel = options.model;
+    const requestedModel = (options.model || "").trim();
 
-    // Check if user requested a specific model that matches a known provider format
-    if (requestedModel) {
-        if (requestedModel.includes("/") && config.openRouterKey) {
-            return callOpenRouter(config.openRouterKey, requestedModel, options);
-        }
-        if ((requestedModel.startsWith("llama") || requestedModel.startsWith("gemma") || requestedModel.startsWith("mixtral")) && config.groqKey) {
-            return callGroq(config.groqKey, requestedModel, options);
-        }
-    }
-
-    // Default priority: OpenRouter (Primary) -> Groq (Fallback) -> Ollama (Local)
+    // 1. Primary: OpenRouter
     if (config.openRouterKey) {
-        const targetModel = requestedModel || config.openRouterModel;
-        return callOpenRouter(config.openRouterKey, targetModel, options);
+        // If requested model belongs to OpenRouter or default
+        const targetModel = (requestedModel && requestedModel.includes("/")) 
+            ? requestedModel 
+            : config.openRouterModel;
+        try {
+            return await callOpenRouter(config.openRouterKey, targetModel, options);
+        } catch (openRouterErr) {
+            console.warn("[AI] OpenRouter failed, attempting fallback...", openRouterErr);
+            if (!config.groqKey) throw openRouterErr;
+        }
     }
 
+    // 2. Fallback: Groq
     if (config.groqKey) {
-        const targetModel = requestedModel || config.groqModel;
-        return callGroq(config.groqKey, targetModel, options);
+        const targetModel = (!requestedModel || requestedModel.includes("/"))
+            ? config.groqModel
+            : requestedModel;
+        try {
+            return await callGroq(config.groqKey, targetModel, options);
+        } catch (groqErr) {
+            console.warn("[AI] Groq failed, attempting Ollama fallback...", groqErr);
+            // If OpenRouter is available, try OpenRouter as fallback
+            if (config.openRouterKey) {
+                return await callOpenRouter(config.openRouterKey, config.openRouterModel, options);
+            }
+            // Otherwise check Ollama
+        }
     }
 
+    // 3. Fallback: Ollama Local
     const ollamaOnline = await isOllamaRunning(config.ollamaUrl);
     if (ollamaOnline) {
-        const targetModel = requestedModel || config.ollamaModel;
+        const targetModel = requestedModel && !requestedModel.includes("/") && !requestedModel.startsWith("llama")
+            ? requestedModel
+            : config.ollamaModel;
         return callOllama(config.ollamaUrl, targetModel, options);
     }
 
     throw new Error(
-        "No AI provider available. Please set OPENROUTER_API_KEY (or OPENROUTER_NEMOTRON_3_SUPER_API_KEY) in .env.local, or set GROQ_API_KEY, or run local Ollama."
+        "No AI provider is reachable. Please verify your OPENROUTER_API_KEY in .env.local or check your connection."
     );
 }
